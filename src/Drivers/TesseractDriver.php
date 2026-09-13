@@ -3,13 +3,17 @@
 namespace LaravelSmartOCR\Drivers;
 
 use LaravelSmartOCR\Contracts\OCRDriver;
-use thiagoalessio\TesseractOCR\TesseractOCR;
-use Intervention\Image\ImageManagerStatic as Image;
 use LaravelSmartOCR\Exceptions\OCRException;
 
+/**
+ * Calls the Tesseract binary directly via exec() — no third-party PHP wrapper needed.
+ * Tesseract must be installed on the OS separately.
+ */
 class TesseractDriver implements OCRDriver
 {
     protected array $config;
+
+    private const SUPPORTED_FORMATS = ['jpg', 'jpeg', 'png', 'tiff', 'bmp'];
 
     public function __construct(array $config = [])
     {
@@ -18,146 +22,209 @@ class TesseractDriver implements OCRDriver
 
     public function extract($document, array $options = []): array
     {
+        $startTime = microtime(true);
+        $binary    = $this->resolveBinary();
+        $imagePath = $this->prepareDocument($document);
+
         try {
-            $imagePath = $this->prepareDocument($document);
-            
-            $ocr = new TesseractOCR($imagePath);
-            
-            if (isset($options['language'])) {
-                $ocr->lang($options['language']);
-            } elseif (isset($this->config['language'])) {
-                $ocr->lang($this->config['language']);
+            $outputBase = sys_get_temp_dir() . '/ocr_out_' . bin2hex(random_bytes(8));
+            $lang       = $options['language'] ?? $this->config['language'] ?? 'eng';
+            $psm        = $options['psm']      ?? $this->config['psm']      ?? 3;
+
+            $timeout = max(1, (int) ($this->config['timeout'] ?? 60));
+
+            $cmd = sprintf(
+                '%s %s %s -l %s --psm %d',
+                escapeshellarg($binary),
+                escapeshellarg($imagePath),
+                escapeshellarg($outputBase),
+                escapeshellarg($lang),
+                (int) $psm
+            );
+
+            // Use proc_open with a timeout to prevent hanging indefinitely
+            $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+            $proc = proc_open($cmd, $descriptors, $pipes);
+
+            if (!is_resource($proc)) {
+                throw new OCRException("Failed to start Tesseract process.");
             }
-            
-            if (isset($options['whitelist'])) {
-                $ocr->whitelist($options['whitelist']);
+
+            $stderr    = '';
+            $startedAt = time();
+            $exitCode  = -1;
+
+            while (true) {
+                $status = proc_get_status($proc);
+                if (!$status['running']) {
+                    $exitCode = $status['exitcode'];
+                    break;
+                }
+                if ((time() - $startedAt) >= $timeout) {
+                    proc_terminate($proc);
+                    throw new OCRException("Tesseract timed out after {$timeout} seconds.");
+                }
+                usleep(100000); // 100ms poll
             }
-            
-            if (isset($options['psm'])) {
-                $ocr->psm($options['psm']);
+
+            $stderr = stream_get_contents($pipes[2]);
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            proc_close($proc);
+
+            $cmdOutput = $stderr ? [$stderr] : [];
+
+            $textFile = $outputBase . '.txt';
+
+            if ($exitCode !== 0 || !file_exists($textFile)) {
+                throw new OCRException(
+                    "Tesseract failed (exit {$exitCode}): " . implode(' ', $cmdOutput)
+                );
             }
-            
-            $text = $ocr->run();
-            
-            $bounds = $this->extractBounds($ocr);
-            
+
+            $text = file_get_contents($textFile);
+
             return [
-                'text' => $text,
-                'confidence' => $this->calculateConfidence($ocr),
-                'bounds' => $bounds,
-                'metadata' => [
-                    'engine' => 'tesseract',
-                    'language' => $options['language'] ?? $this->config['language'] ?? 'eng',
-                    'processing_time' => microtime(true) - (defined('LARAVEL_START') ? LARAVEL_START : microtime(true))
-                ]
+                'text'       => $text,
+                'confidence' => 0.0,
+                'bounds'     => [],
+                'metadata'   => [
+                    'engine'          => 'tesseract',
+                    'language'        => $lang,
+                    'psm'             => $psm,
+                    'processing_time' => microtime(true) - $startTime,
+                ],
             ];
-        } catch (\Exception $e) {
-            throw new OCRException("Tesseract extraction failed: " . $e->getMessage());
         } finally {
-            if (isset($imagePath) && file_exists($imagePath) && $imagePath !== $document) {
-                unlink($imagePath);
+            // Clean up temp files
+            if (isset($textFile) && file_exists($textFile)) {
+                @unlink($textFile);
+            }
+            if ($imagePath !== $document && file_exists($imagePath)) {
+                @unlink($imagePath);
             }
         }
     }
 
     public function extractTable($document, array $options = []): array
     {
-        $extraction = $this->extract($document, array_merge($options, ['psm' => 6]));
-        
-        $lines = explode("\n", $extraction['text']);
+        $options['psm'] = $options['psm'] ?? 6;
+        $result = $this->extract($document, $options);
+
         $table = [];
-        
-        foreach ($lines as $line) {
-            if (trim($line) !== '') {
-                $cells = preg_split('/\s{2,}|\t/', $line);
-                $table[] = array_map('trim', $cells);
+        foreach (explode("\n", $result['text']) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
             }
+            $table[] = array_map('trim', preg_split('/\s{2,}|\t/', $line));
         }
-        
+
         return [
-            'table' => $table,
-            'raw_text' => $extraction['text'],
-            'metadata' => $extraction['metadata']
+            'table'    => $table,
+            'raw_text' => $result['text'],
+            'metadata' => $result['metadata'],
         ];
     }
 
     public function extractBarcode($document, array $options = []): array
     {
-        throw new OCRException("Barcode extraction not supported by Tesseract driver. Use a specialized barcode library.");
+        throw new OCRException("TesseractDriver cannot extract barcodes. Use ClaudeVisionDriver or OpenAIVisionDriver.");
     }
 
     public function extractQRCode($document, array $options = []): array
     {
-        throw new OCRException("QR code extraction not supported by Tesseract driver. Use a specialized QR code library.");
+        throw new OCRException("TesseractDriver cannot extract QR codes. Use ClaudeVisionDriver or OpenAIVisionDriver.");
     }
 
     public function getSupportedLanguages(): array
     {
         return [
-            'eng' => 'English',
-            'spa' => 'Spanish',
-            'fra' => 'French',
-            'deu' => 'German',
-            'ita' => 'Italian',
-            'por' => 'Portuguese',
-            'rus' => 'Russian',
-            'jpn' => 'Japanese',
-            'kor' => 'Korean',
-            'chi_sim' => 'Chinese (Simplified)',
-            'chi_tra' => 'Chinese (Traditional)',
-            'ara' => 'Arabic',
-            'hin' => 'Hindi',
+            'eng' => 'English',   'spa' => 'Spanish',  'fra' => 'French',
+            'deu' => 'German',    'ita' => 'Italian',   'por' => 'Portuguese',
+            'hin' => 'Hindi',     'ara' => 'Arabic',    'rus' => 'Russian',
+            'jpn' => 'Japanese',  'kor' => 'Korean',
+            'chi_sim' => 'Chinese Simplified', 'chi_tra' => 'Chinese Traditional',
         ];
     }
 
     public function getSupportedFormats(): array
     {
-        return ['jpg', 'jpeg', 'png', 'tiff', 'bmp', 'pdf'];
+        return self::SUPPORTED_FORMATS;
     }
 
-    protected function prepareDocument($document): string
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    private function resolveBinary(): string
     {
-        if (filter_var($document, FILTER_VALIDATE_URL)) {
-            $tempPath = sys_get_temp_dir() . '/' . uniqid('ocr_') . '.jpg';
-            copy($document, $tempPath);
-            return $tempPath;
+        $binary = $this->config['binary'] ?? '';
+
+        // Try config path
+        if ($binary && file_exists($binary)) {
+            return $binary;
         }
-        
-        $extension = strtolower(pathinfo($document, PATHINFO_EXTENSION));
-        
-        if ($extension === 'pdf') {
+
+        // Try PATH
+        $found = trim(shell_exec(PHP_OS_FAMILY === 'Windows' ? 'where tesseract 2>NUL' : 'which tesseract 2>/dev/null') ?? '');
+        if ($found) {
+            return $found;
+        }
+
+        // Common Windows install path
+        $win = 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe';
+        if (file_exists($win)) {
+            return $win;
+        }
+
+        throw new OCRException(
+            "Tesseract binary not found. Install from https://github.com/UB-Mannheim/tesseract/wiki " .
+            "or set TESSERACT_BINARY in your .env file."
+        );
+    }
+
+    private function prepareDocument(string $document): string
+    {
+        if (!file_exists($document)) {
+            throw new OCRException("File not found: {$document}");
+        }
+
+        // Use finfo to detect actual type — uploaded files have .tmp extension
+        $finfo    = new \finfo(FILEINFO_MIME_TYPE);
+        $mime     = $finfo->file($document);
+
+        if ($mime === 'application/pdf') {
             return $this->convertPdfToImage($document);
         }
-        
-        if (in_array($extension, ['jpg', 'jpeg', 'png', 'tiff', 'bmp'])) {
+
+        if (str_starts_with($mime, 'image/')) {
             return $document;
         }
-        
-        throw new OCRException("Unsupported file format: {$extension}");
+
+        throw new OCRException("Unsupported format for Tesseract (detected: {$mime}). Supported: images and PDF.");
     }
 
-    protected function convertPdfToImage($pdfPath): string
+    private function convertPdfToImage(string $pdfPath): string
     {
-        $imagePath = sys_get_temp_dir() . '/' . uniqid('ocr_') . '.jpg';
-        
-        $imagick = new \Imagick();
-        $imagick->setResolution(300, 300);
-        $imagick->readImage($pdfPath . '[0]');
-        $imagick->setImageFormat('jpg');
-        $imagick->writeImage($imagePath);
-        $imagick->clear();
-        $imagick->destroy();
-        
-        return $imagePath;
-    }
+        // Use Ghostscript if available — no PHP package needed
+        $gs  = PHP_OS_FAMILY === 'Windows' ? 'gswin64c' : 'gs';
+        $out = sys_get_temp_dir() . '/ocr_pdf_' . bin2hex(random_bytes(8)) . '.png';
 
-    protected function extractBounds($ocr): array
-    {
-        return [];
-    }
+        $cmd = sprintf(
+            '%s -dNOPAUSE -dBATCH -sDEVICE=png16m -r300 -dFirstPage=1 -dLastPage=1 -sOutputFile=%s %s 2>&1',
+            escapeshellarg($gs),
+            escapeshellarg($out),
+            escapeshellarg($pdfPath)
+        );
 
-    protected function calculateConfidence($ocr): float
-    {
-        return 0.0;
+        exec($cmd, $output, $exitCode);
+
+        if ($exitCode !== 0 || !file_exists($out)) {
+            throw new OCRException(
+                "Cannot convert PDF to image. Install Ghostscript or use PdfTextDriver for digital PDFs. " .
+                "Error: " . implode(' ', $output)
+            );
+        }
+
+        return $out;
     }
 }

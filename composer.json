@@ -1,7 +1,7 @@
 {
     "name": "laravelsmartocr/laravel-smart-ocr",
-    "description": "Laravel Smart OCR & Document Data Extractor - A powerful OCR and document parsing engine for Laravel",
-    "keywords": ["laravel", "ocr", "document", "parser", "tesseract", "pdf", "invoice", "receipt"],
+    "description": "Laravel Smart OCR & Document Data Extractor — no binary required, uses PHP built-in curl for cloud vision APIs",
+    "keywords": ["laravel", "ocr", "document", "parser", "pdf", "invoice", "receipt", "claude", "openai"],
     "license": "MIT",
     "authors": [
         {
@@ -12,10 +12,10 @@
     "require": {
         "php": "^8.0",
         "illuminate/support": "^9.0|^10.0|^11.0|^12.0",
-        "thiagoalessio/tesseract_ocr": "^2.12",
-        "smalot/pdfparser": "^2.0",
-        "intervention/image": "^2.7 || ^3.0",
-        "guzzlehttp/guzzle": "^7.0"
+        "smalot/pdfparser": "^2.0"
+    },
+    "suggest": {
+        "thiagoalessio/tesseract_ocr": "Only if you want to use the local Tesseract driver"
     },
     "require-dev": {
         "phpunit/phpunit": "^9.0|^10.0",

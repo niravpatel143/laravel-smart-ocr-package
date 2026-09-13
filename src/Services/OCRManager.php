@@ -4,38 +4,30 @@ namespace LaravelSmartOCR\Services;
 
 use Illuminate\Support\Manager;
 use LaravelSmartOCR\Contracts\OCRDriver;
+use LaravelSmartOCR\Drivers\ClaudeVisionDriver;
+use LaravelSmartOCR\Drivers\OpenAIVisionDriver;
+use LaravelSmartOCR\Drivers\PdfTextDriver;
 use LaravelSmartOCR\Drivers\TesseractDriver;
 use LaravelSmartOCR\Exceptions\DriverNotAvailableException;
 
 class OCRManager extends Manager
 {
-    /**
-     * Create the Tesseract driver — the only built-in driver.
-     */
-    protected function createTesseractDriver(): OCRDriver
-    {
-        return new TesseractDriver(
-            $this->config->get('smart-ocr.drivers.tesseract', [])
-        );
-    }
+    protected const BUILT_IN_DRIVERS = ['claude', 'openai', 'pdf', 'tesseract'];
 
     public function getDefaultDriver(): string
     {
-        return $this->config->get('smart-ocr.default', 'tesseract');
+        return $this->config->get('smart-ocr.default', 'claude');
     }
 
     /**
      * Resolve an OCR driver by name.
-     *
-     * Custom drivers can be registered via SmartOCR::extend() — the parent
-     * Manager class provides that method and stores factories in $customCreators.
-     * Unknown drivers throw DriverNotAvailableException instead of silently failing.
+     * Custom drivers: SmartOCR::extend('name', fn() => new MyDriver())
+     * Built-in drivers: claude, openai, pdf, tesseract
      */
     public function driver($driver = null)
     {
         $driver = $driver ?? $this->getDefaultDriver();
 
-        // Let the parent handle custom drivers registered via extend()
         if (isset($this->customCreators[$driver])) {
             $resolved = parent::driver($driver);
 
@@ -48,12 +40,45 @@ class OCRManager extends Manager
             return $resolved;
         }
 
-        // Only tesseract is a built-in driver; any other name is unknown.
-        if ($driver !== 'tesseract') {
-            throw DriverNotAvailableException::unknown($driver);
-        }
+        return match ($driver) {
+            'claude'    => $this->createClaudeDriver(),
+            'openai'    => $this->createOpenAIDriver(),
+            'pdf'       => $this->createPdfDriver(),
+            'tesseract' => $this->createTesseractDriver(),
+            default     => throw DriverNotAvailableException::unknown($driver, self::BUILT_IN_DRIVERS),
+        };
+    }
 
-        return $this->createTesseractDriver();
+    // ── Driver factories ──────────────────────────────────────────────────
+
+    protected function createClaudeDriver(): OCRDriver
+    {
+        return new ClaudeVisionDriver(
+            $this->config->get('smart-ocr.drivers.claude', [])
+        );
+    }
+
+    protected function createOpenAIDriver(): OCRDriver
+    {
+        return new OpenAIVisionDriver(
+            $this->config->get('smart-ocr.drivers.openai', [])
+        );
+    }
+
+    protected function createPdfDriver(): OCRDriver
+    {
+        return new PdfTextDriver(
+            $this->config->get('smart-ocr.drivers.pdf', [])
+        );
+    }
+
+    protected function createTesseractDriver(): OCRDriver
+    {
+        // TesseractDriver uses exec() directly — no PHP wrapper package needed.
+        // Binary availability is checked lazily inside the driver on first use.
+        return new TesseractDriver(
+            $this->config->get('smart-ocr.drivers.tesseract', [])
+        );
     }
 
     // ── Convenience pass-throughs ──────────────────────────────────────────

@@ -2,16 +2,13 @@
 
 namespace LaravelSmartOCR\Services;
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\ConnectException;
-use GuzzleHttp\Exception\RequestException;
-use GuzzleHttp\HandlerStack;
-use GuzzleHttp\Middleware;
-use GuzzleHttp\Psr7\Request;
-use GuzzleHttp\Psr7\Response;
 use LaravelSmartOCR\Data\DocumentInput;
 use LaravelSmartOCR\Exceptions\InvalidDocumentException;
 
+/**
+ * Downloads remote documents to a local temp file using PHP built-in curl.
+ * No third-party HTTP library required.
+ */
 class RemoteDocumentResolver
 {
     private UrlSecurityValidator $urlValidator;
@@ -23,21 +20,16 @@ class RemoteDocumentResolver
     {
         $this->urlValidator    = $urlValidator;
         $remote                = $config['remote_urls'] ?? [];
-        $this->connectTimeout  = (int) ($remote['connect_timeout'] ?? 5);
-        $this->totalTimeout    = (int) ($remote['total_timeout'] ?? 30);
+        $this->connectTimeout  = (int) ($remote['connect_timeout']   ?? 5);
+        $this->totalTimeout    = (int) ($remote['total_timeout']     ?? 30);
         $this->maxDownloadSize = (int) ($remote['max_download_size'] ?? 10 * 1024 * 1024);
     }
 
-    /**
-     * Download a remote URL to a temp file and return a DocumentInput.
-     * Throws InvalidDocumentException on any security or network failure.
-     */
     public function resolve(string $url): DocumentInput
     {
-        // Validate URL before connecting
         $this->urlValidator->validate($url);
 
-        $tempPath = $this->makeTempPath($url);
+        $tempPath = $this->makeTempPath();
 
         try {
             $this->download($url, $tempPath);
@@ -49,10 +41,10 @@ class RemoteDocumentResolver
         }
 
         $mimeType = (new \finfo(FILEINFO_MIME_TYPE))->file($tempPath) ?: 'application/octet-stream';
-        $filename = basename(parse_url($url, PHP_URL_PATH) ?? 'remote-document');
-        if ($filename === '') {
-            $filename = 'remote-document';
-        }
+
+        // Sanitise filename — only safe characters, no path traversal
+        $rawName  = basename(parse_url($url, PHP_URL_PATH) ?? '');
+        $filename = preg_replace('/[^a-zA-Z0-9._-]/', '_', $rawName) ?: 'remote-document';
 
         return DocumentInput::fromDownloadedUrl(
             remoteUrl: $url,
@@ -66,74 +58,73 @@ class RemoteDocumentResolver
 
     private function download(string $url, string $tempPath): void
     {
-        $redirectValidator = $this->urlValidator;
-        $maxDownload       = $this->maxDownloadSize;
+        $maxDownload    = $this->maxDownloadSize;
+        $urlValidator   = $this->urlValidator;
+        $written        = 0;
 
-        $stack = HandlerStack::create();
+        $handle = fopen($tempPath, 'wb');
+        if ($handle === false) {
+            throw new InvalidDocumentException("Cannot create temporary file for remote document.");
+        }
 
-        // Validate every redirect target before following
-        $stack->push(Middleware::mapRequest(function (Request $request) use ($redirectValidator) {
-            $redirectValidator->validateRedirect((string) $request->getUri());
-            return $request;
-        }));
+        $ch = curl_init($url);
 
-        $client = new Client([
-            'handler'         => $stack,
-            'connect_timeout' => $this->connectTimeout,
-            'timeout'         => $this->totalTimeout,
-            'allow_redirects' => [
-                'max'             => 5,
-                'strict'          => true,
-                'referer'         => false,
-                'track_redirects' => false,
-                'on_redirect'     => function ($request, $response, $uri) use ($redirectValidator) {
-                    $redirectValidator->validateRedirect((string) $uri);
-                },
-            ],
-            'stream'     => true,
-            'verify'     => true,
+        curl_setopt_array($ch, [
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
+            CURLOPT_TIMEOUT        => $this->totalTimeout,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_USERAGENT      => 'LaravelSmartOCR/1.0',
+
+            // Validate redirect targets before following
+            CURLOPT_HEADERFUNCTION => function ($ch, $header) use ($urlValidator) {
+                if (stripos($header, 'Location:') === 0) {
+                    $redirectUrl = trim(substr($header, 9));
+                    if ($redirectUrl) {
+                        $urlValidator->validateRedirect($redirectUrl);
+                    }
+                }
+                return strlen($header);
+            },
+
+            // Write chunks directly to file — validate size limit per chunk
+            CURLOPT_WRITEFUNCTION => function ($ch, $chunk) use ($handle, $maxDownload, &$written) {
+                $written += strlen($chunk);
+                if ($written > $maxDownload) {
+                    return -1; // Abort curl — triggers CURLE_WRITE_ERROR
+                }
+                fwrite($handle, $chunk);
+                return strlen($chunk);
+            },
         ]);
 
-        $response = $client->get($url);
+        $success   = curl_exec($ch);
+        $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        $curlErrNo = curl_errno($ch);
+        curl_close($ch);
+        fclose($handle);
 
-        $contentLength = (int) ($response->getHeaderLine('Content-Length') ?: 0);
-        if ($contentLength > $maxDownload) {
+        if ($curlErrNo === CURLE_WRITE_ERROR || $written > $maxDownload) {
             throw new InvalidDocumentException(
-                "Remote document Content-Length ({$contentLength} bytes) exceeds maximum allowed."
+                "Remote document exceeds maximum download size ({$maxDownload} bytes)."
             );
         }
 
-        $body    = $response->getBody();
-        $written = 0;
-        $handle  = fopen($tempPath, 'wb');
-
-        if ($handle === false) {
-            throw new InvalidDocumentException("Cannot write temporary file for remote document.");
+        if (!$success || $curlError) {
+            throw new InvalidDocumentException("Failed to download remote document: {$curlError}");
         }
 
-        try {
-            while (! $body->eof()) {
-                $chunk   = $body->read(8192);
-                $written += strlen($chunk);
-
-                if ($written > $maxDownload) {
-                    throw new InvalidDocumentException(
-                        "Remote document exceeds maximum download size ({$maxDownload} bytes)."
-                    );
-                }
-
-                fwrite($handle, $chunk);
-            }
-        } finally {
-            fclose($handle);
+        if ($httpCode >= 400) {
+            throw new InvalidDocumentException("Remote server returned HTTP {$httpCode}.");
         }
     }
 
-    private function makeTempPath(string $url): string
+    private function makeTempPath(): string
     {
-        $ext = strtolower(pathinfo(parse_url($url, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION));
-        $ext = preg_match('/^[a-z0-9]{1,5}$/', $ext) ? $ext : 'tmp';
-
-        return sys_get_temp_dir() . '/ocr_' . bin2hex(random_bytes(16)) . '.' . $ext;
+        // Fully random name — never derived from user input
+        return sys_get_temp_dir() . '/ocr_' . bin2hex(random_bytes(16)) . '.tmp';
     }
 }

@@ -9,29 +9,47 @@ return [
     | This option controls the default OCR driver that will be used by the
     | package. You may set this to any of the drivers defined below.
     |
-    | Supported: "tesseract"
-    | Cloud drivers (google_vision, aws_textract, azure) are not yet implemented.
-    | Register custom drivers via SmartOCR::extend('name', fn($app) => new MyDriver()).
+    | Supported: "claude", "openai", "pdf", "tesseract"
+    |
+    |  claude    — Anthropic Claude Vision API (images + scanned docs, no binary needed)
+    |  openai    — OpenAI GPT-4o Vision API   (images + scanned docs, no binary needed)
+    |  pdf       — smalot/pdfparser           (digital PDFs only, free, offline)
+    |  tesseract — Local Tesseract binary     (requires separate OS install)
     |
     */
-    'default' => env('SMART_OCR_DRIVER', 'tesseract'),
+    'default' => env('SMART_OCR_DRIVER', 'claude'),
 
     /*
     |--------------------------------------------------------------------------
     | OCR Drivers
     |--------------------------------------------------------------------------
-    |
-    | Only "tesseract" is a built-in driver. Custom drivers can be registered
-    | at boot time via SmartOCR::extend(). Using an unregistered driver name
-    | throws DriverNotAvailableException immediately — no silent fallback.
-    |
     */
     'drivers' => [
-        'tesseract' => [
-            'binary' => env('TESSERACT_BINARY', '/usr/bin/tesseract'),
-            'language' => env('TESSERACT_LANGUAGE', 'eng'),
-            'timeout' => env('TESSERACT_TIMEOUT', 60),
+
+        'claude' => [
+            'api_key'    => env('ANTHROPIC_API_KEY'),
+            'model'      => env('SMART_OCR_CLAUDE_MODEL', 'claude-opus-4-7'),
+            'max_tokens' => 4096,
+            'timeout'    => 60,
         ],
+
+        'openai' => [
+            'api_key'    => env('OPENAI_API_KEY'),
+            'model'      => env('SMART_OCR_OPENAI_MODEL', 'gpt-4o'),
+            'max_tokens' => 4096,
+            'timeout'    => 60,
+        ],
+
+        'pdf' => [
+            'max_pages' => env('SMART_OCR_PDF_MAX_PAGES', 100),
+        ],
+
+        'tesseract' => [
+            'binary'   => env('TESSERACT_BINARY', 'C:\Program Files\Tesseract-OCR\tesseract.exe'),
+            'language' => env('TESSERACT_LANGUAGE', 'eng'),
+            'timeout'  => env('TESSERACT_TIMEOUT', 60),
+        ],
+
     ],
 
     /*

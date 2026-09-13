@@ -2,8 +2,8 @@
 
 namespace LaravelSmartOCR\Services;
 
-use Illuminate\Support\Facades\Http;
 use LaravelSmartOCR\Exceptions\AICleanupException;
+use LaravelSmartOCR\Http\CurlClient;
 
 class AICleanupService
 {
@@ -20,16 +20,11 @@ class AICleanupService
     {
         $provider = $options['provider'] ?? $this->config['default_provider'] ?? 'openai';
         
-        switch ($provider) {
-            case 'openai':
-                return $this->cleanWithOpenAI($extractedData, $options);
-            case 'anthropic':
-                return $this->cleanWithAnthropic($extractedData, $options);
-            case 'local':
-                return $this->cleanWithLocalModel($extractedData, $options);
-            default:
-                return $this->cleanWithBasicRules($extractedData, $options);
-        }
+        return match ($provider) {
+            'openai'    => $this->cleanWithOpenAI($extractedData, $options),
+            'anthropic' => $this->cleanWithAnthropic($extractedData, $options),
+            default     => $this->cleanWithBasicRules($extractedData, $options),
+        };
     }
 
     public function mapFields(array $data, array $mapping): array
@@ -104,36 +99,33 @@ class AICleanupService
 
     protected function cleanWithOpenAI(array $data, array $options): array
     {
-        if (!isset($this->config['providers']['openai']['api_key'])) {
+        $apiKey = $this->config['providers']['openai']['api_key'] ?? '';
+        if (!$apiKey) {
             throw new AICleanupException('OpenAI API key not configured');
         }
 
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->config['providers']['openai']['api_key'],
-            'Content-Type' => 'application/json',
-        ])->post('https://api.openai.com/v1/chat/completions', [
-            'model' => $options['model'] ?? 'gpt-3.5-turbo',
-            'messages' => [
-                [
-                    'role' => 'system',
-                    'content' => $this->getCleanupPrompt($options)
-                ],
-                [
-                    'role' => 'user',
-                    'content' => json_encode($data)
-                ]
+        $http = new CurlClient(
+            defaultHeaders: ['Authorization: Bearer ' . $apiKey],
+            timeout: $this->config['providers']['openai']['timeout'] ?? 30,
+        );
+
+        $response = $http->post('https://api.openai.com/v1/chat/completions', [
+            'model'           => $options['model'] ?? $this->config['providers']['openai']['model'] ?? 'gpt-4o-mini',
+            'temperature'     => 0.3,
+            'response_format' => ['type' => 'json_object'],
+            'messages'        => [
+                ['role' => 'system', 'content' => $this->getCleanupPrompt($options)],
+                ['role' => 'user',   'content' => json_encode($data)],
             ],
-            'temperature' => 0.3,
-            'response_format' => ['type' => 'json_object']
         ]);
 
-        if (!$response->successful()) {
-            throw new AICleanupException('OpenAI API request failed: ' . $response->body());
+        $content = $response['choices'][0]['message']['content'] ?? null;
+
+        if ($content === null) {
+            throw new AICleanupException('OpenAI API returned an unexpected response.');
         }
 
-        $result = $response->json();
-        
-        return json_decode($result['choices'][0]['message']['content'], true) ?? $data;
+        return json_decode($content, true) ?? $data;
     }
 
     protected function cleanWithBasicRules(array $data, array $options): array
@@ -152,6 +144,7 @@ class AICleanupService
                     $field = $this->cleanFieldValue($field, 'string');
                 }
             }
+            unset($field);
         }
         
         return $cleaned;
@@ -425,21 +418,41 @@ class AICleanupService
 
     protected function cleanWithAnthropic(array $data, array $options): array
     {
-        if (empty($this->config['providers']['anthropic']['api_key'])) {
-            throw new AICleanupException(
-                'Anthropic API key not configured. Set ANTHROPIC_API_KEY or disable AI cleanup.'
-            );
+        $apiKey = $this->config['providers']['anthropic']['api_key'] ?? '';
+        if (!$apiKey) {
+            throw new AICleanupException('Anthropic API key not configured. Set ANTHROPIC_API_KEY.');
         }
 
-        throw new AICleanupException(
-            'Anthropic provider integration is not yet implemented. Use "openai" or disable AI cleanup.'
+        $http = new CurlClient(
+            defaultHeaders: [
+                'x-api-key: ' . $apiKey,
+                'anthropic-version: 2023-06-01',
+            ],
+            timeout: $this->config['providers']['anthropic']['timeout'] ?? 30,
         );
-    }
 
-    protected function cleanWithLocalModel(array $data, array $options): array
-    {
-        throw new AICleanupException(
-            'Local model provider is not yet implemented. Use "openai" or disable AI cleanup.'
-        );
+        $model = $options['model'] ?? $this->config['providers']['anthropic']['model'] ?? 'claude-haiku-4-5-20251001';
+
+        $response = $http->post('https://api.anthropic.com/v1/messages', [
+            'model'      => $model,
+            'max_tokens' => 2048,
+            'system'     => $this->getCleanupPrompt($options),
+            'messages'   => [
+                ['role' => 'user', 'content' => json_encode($data)],
+            ],
+        ]);
+
+        $content = $response['content'][0]['text'] ?? null;
+
+        if ($content === null) {
+            throw new AICleanupException('Anthropic API returned an unexpected response.');
+        }
+
+        // Extract JSON from the response (model may wrap it in markdown)
+        if (preg_match('/```(?:json)?\s*([\s\S]+?)```/', $content, $m)) {
+            $content = $m[1];
+        }
+
+        return json_decode(trim($content), true) ?? $data;
     }
 }

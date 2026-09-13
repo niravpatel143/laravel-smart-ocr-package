@@ -87,10 +87,25 @@ class TemplateManager
 
     public function importTemplate($filePath): DocumentTemplate
     {
-        $data = json_decode(file_get_contents($filePath), true);
-        
+        // Prevent path traversal — only allow files inside storage/app
+        $real = realpath($filePath);
+        if ($real === false || !str_starts_with($real, realpath(storage_path()))) {
+            throw new \InvalidArgumentException('Template file must be inside the application storage directory.');
+        }
+
+        if (!is_readable($real)) {
+            throw new \InvalidArgumentException("Template file is not readable: {$real}");
+        }
+
+        $json = file_get_contents($real);
+        $data = json_decode($json, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new \InvalidArgumentException('Invalid JSON in template file: ' . json_last_error_msg());
+        }
+
         if (!$data || !isset($data['name']) || !isset($data['type'])) {
-            throw new \InvalidArgumentException('Invalid template file format');
+            throw new \InvalidArgumentException('Invalid template file format. Required keys: name, type.');
         }
 
         return $this->create($data);
@@ -124,7 +139,11 @@ class TemplateManager
     protected function extractFieldValue($text, TemplateField $field): ?string
     {
         if ($field->pattern) {
-            if (preg_match($field->pattern, $text, $matches)) {
+            // Suppress errors and check result — protects against malformed/ReDoS regex
+            $matched = @preg_match($field->pattern, $text, $matches);
+            if ($matched === false) {
+                // Invalid regex — skip silently rather than crash
+            } elseif ($matched === 1) {
                 return trim($matches[1] ?? $matches[0]);
             }
         }
@@ -146,7 +165,8 @@ class TemplateManager
         $searchPatterns = $this->getFieldSearchPatterns($field);
         
         foreach ($searchPatterns as $pattern) {
-            if (preg_match($pattern, $text, $matches)) {
+            $matched = @preg_match($pattern, $text, $matches);
+            if ($matched === 1) {
                 return trim($matches[1]);
             }
         }

@@ -46,7 +46,7 @@ class TemplateManager
             'fields' => [],
             'raw_text' => $text,
             'metadata' => [
-                'processing_time' => microtime(true) - LARAVEL_START,
+                'processing_time' => microtime(true) - (defined('LARAVEL_START') ? LARAVEL_START : microtime(true)),
                 'template_version' => $template->version ?? '1.0',
             ]
         ];

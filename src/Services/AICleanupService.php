@@ -425,11 +425,21 @@ class AICleanupService
 
     protected function cleanWithAnthropic(array $data, array $options): array
     {
-        return $this->cleanWithBasicRules($data, $options);
+        if (empty($this->config['providers']['anthropic']['api_key'])) {
+            throw new AICleanupException(
+                'Anthropic API key not configured. Set ANTHROPIC_API_KEY or disable AI cleanup.'
+            );
+        }
+
+        throw new AICleanupException(
+            'Anthropic provider integration is not yet implemented. Use "openai" or disable AI cleanup.'
+        );
     }
 
     protected function cleanWithLocalModel(array $data, array $options): array
     {
-        return $this->cleanWithBasicRules($data, $options);
+        throw new AICleanupException(
+            'Local model provider is not yet implemented. Use "openai" or disable AI cleanup.'
+        );
     }
 }

@@ -9,7 +9,9 @@ return [
     | This option controls the default OCR driver that will be used by the
     | package. You may set this to any of the drivers defined below.
     |
-    | Supported: "tesseract", "google_vision", "aws_textract", "azure"
+    | Supported: "tesseract"
+    | Cloud drivers (google_vision, aws_textract, azure) are not yet implemented.
+    | Register custom drivers via SmartOCR::extend('name', fn($app) => new MyDriver()).
     |
     */
     'default' => env('SMART_OCR_DRIVER', 'tesseract'),
@@ -19,9 +21,9 @@ return [
     | OCR Drivers
     |--------------------------------------------------------------------------
     |
-    | Here you may configure the OCR drivers for your application. Each driver
-    | has its own configuration options. Make sure to add your API credentials
-    | for cloud-based services.
+    | Only "tesseract" is a built-in driver. Custom drivers can be registered
+    | at boot time via SmartOCR::extend(). Using an unregistered driver name
+    | throws DriverNotAvailableException immediately — no silent fallback.
     |
     */
     'drivers' => [
@@ -29,23 +31,6 @@ return [
             'binary' => env('TESSERACT_BINARY', '/usr/bin/tesseract'),
             'language' => env('TESSERACT_LANGUAGE', 'eng'),
             'timeout' => env('TESSERACT_TIMEOUT', 60),
-        ],
-
-        'google_vision' => [
-            'key_file' => env('GOOGLE_VISION_KEY_FILE'),
-            'project_id' => env('GOOGLE_VISION_PROJECT_ID'),
-        ],
-
-        'aws_textract' => [
-            'key' => env('AWS_ACCESS_KEY_ID'),
-            'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
-        ],
-
-        'azure' => [
-            'endpoint' => env('AZURE_OCR_ENDPOINT'),
-            'key' => env('AZURE_OCR_KEY'),
-            'version' => env('AZURE_OCR_VERSION', '3.2'),
         ],
     ],
 
@@ -149,6 +134,21 @@ return [
     */
     'security' => [
         'encrypt_stored_data' => env('SMART_OCR_ENCRYPT_DATA', false),
+        'scan_for_malware' => env('SMART_OCR_SCAN_MALWARE', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Input Validation
+    |--------------------------------------------------------------------------
+    |
+    | Central validation applied to every document before OCR begins.
+    | Extension alone cannot bypass MIME validation.
+    |
+    */
+    'validation' => [
+        'max_file_size' => env('SMART_OCR_MAX_FILE_SIZE', 10 * 1024 * 1024), // 10 MB
+        'allowed_extensions' => ['jpg', 'jpeg', 'png', 'pdf', 'tiff', 'bmp'],
         'allowed_mime_types' => [
             'image/jpeg',
             'image/png',
@@ -156,7 +156,52 @@ return [
             'image/bmp',
             'application/pdf',
         ],
-        'scan_for_malware' => env('SMART_OCR_SCAN_MALWARE', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Remote URL Policy
+    |--------------------------------------------------------------------------
+    |
+    | Remote URL fetching is DISABLED by default to prevent SSRF attacks.
+    | Enable only when you explicitly need to fetch documents from the internet.
+    | Private IPs, loopback, and cloud-metadata addresses are always blocked.
+    |
+    */
+    'remote_urls' => [
+        'allow_remote_urls' => env('SMART_OCR_ALLOW_REMOTE_URLS', false),
+        'connect_timeout' => 5,   // seconds
+        'total_timeout' => 30,    // seconds
+        'max_download_size' => env('SMART_OCR_MAX_DOWNLOAD_SIZE', 10 * 1024 * 1024), // 10 MB
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | PDF Processing
+    |--------------------------------------------------------------------------
+    */
+    'pdf' => [
+        'max_pages' => env('SMART_OCR_PDF_MAX_PAGES', 100),
+        'dpi' => env('SMART_OCR_PDF_DPI', 300),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Human Review
+    |--------------------------------------------------------------------------
+    */
+    'review' => [
+        'confidence_threshold' => env('SMART_OCR_REVIEW_THRESHOLD', 0.80),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Privacy / AI Controls
+    |--------------------------------------------------------------------------
+    */
+    'privacy' => [
+        'allow_external_ai' => env('SMART_OCR_ALLOW_EXTERNAL_AI', false),
+        'redact_before_ai' => [],
     ],
 
     /*

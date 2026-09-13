@@ -2,9 +2,14 @@
 
 namespace LaravelSmartOCR\Services;
 
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
-use LaravelSmartOCR\Models\ProcessedDocument;
+use LaravelSmartOCR\Data\DocumentInput;
 use LaravelSmartOCR\Exceptions\DocumentParserException;
+use LaravelSmartOCR\Models\ProcessedDocument;
+use LaravelSmartOCR\Services\DocumentValidator;
+use LaravelSmartOCR\Services\RemoteDocumentResolver;
+use LaravelSmartOCR\Services\TemporaryDocumentManager;
 use Smalot\PdfParser\Parser as PdfParser;
 
 class DocumentParser
@@ -13,21 +18,29 @@ class DocumentParser
     protected OCRManager $ocrManager;
     protected TemplateManager $templateManager;
     protected AICleanupService $aiCleanup;
+    protected DocumentValidator $validator;
+    protected RemoteDocumentResolver $remoteResolver;
 
     public function __construct($app)
     {
-        $this->app = $app;
-        $this->ocrManager = $app->make('smart-ocr');
+        $this->app            = $app;
+        $this->ocrManager     = $app->make('smart-ocr');
         $this->templateManager = $app->make('smart-ocr.templates');
-        $this->aiCleanup = $app->make('smart-ocr.ai-cleanup');
+        $this->aiCleanup      = $app->make('smart-ocr.ai-cleanup');
+        $this->validator      = $app->make('smart-ocr.validator');
+        $this->remoteResolver = $app->make('smart-ocr.remote-resolver');
     }
 
     public function parse($document, array $options = []): array
     {
-        $startTime = microtime(true);
-        
+        $startTime  = microtime(true);
+        $tempManager = new TemporaryDocumentManager(
+            $this->app['config']->get('smart-ocr.storage.temp_path')
+        );
+
         try {
-            $documentPath = $this->prepareDocument($document);
+            $input        = $this->resolveInput($document, $tempManager);
+            $documentPath = $input->localPath();
             
             $rawExtraction = $this->ocrManager->extract($documentPath, $options);
             
@@ -70,8 +83,10 @@ class DocumentParser
                 ],
             ];
         } finally {
-            if (isset($documentPath) && $documentPath !== $document && file_exists($documentPath)) {
-                unlink($documentPath);
+            // Always clean up temp files — success and failure paths both reach here
+            $tempManager->cleanup();
+            if (isset($input)) {
+                $input->cleanup();
             }
         }
     }
@@ -130,24 +145,38 @@ class DocumentParser
         return $metadata;
     }
 
-    protected function prepareDocument($document): string
+    /**
+     * Normalise any supported input type into a DocumentInput and validate it.
+     * Registers any temp files with $tempManager so cleanup() catches them.
+     */
+    protected function resolveInput($document, TemporaryDocumentManager $tempManager): DocumentInput
     {
-        if ($document instanceof \Illuminate\Http\UploadedFile) {
-            $path = $document->store('temp', 'local');
-            return Storage::disk('local')->path($path);
+        if ($document instanceof UploadedFile) {
+            $input = DocumentInput::fromUploadedFile($document);
+            $this->validator->validate($input);
+            return $input;
         }
-        
-        if (filter_var($document, FILTER_VALIDATE_URL)) {
-            $tempPath = sys_get_temp_dir() . '/' . uniqid('doc_') . '.' . pathinfo($document, PATHINFO_EXTENSION);
-            copy($document, $tempPath);
-            return $tempPath;
+
+        if (is_string($document) && filter_var($document, FILTER_VALIDATE_URL)) {
+            $allowRemote = $this->app['config']->get('smart-ocr.remote_urls.allow_remote_urls', false);
+            if (! $allowRemote) {
+                throw new DocumentParserException(
+                    "Remote URL processing is disabled. Set smart-ocr.remote_urls.allow_remote_urls to true to enable it."
+                );
+            }
+            $input = $this->remoteResolver->resolve($document);
+            $tempManager->track($input->localPath());
+            $this->validator->validate($input);
+            return $input;
         }
-        
+
         if (is_string($document) && file_exists($document)) {
-            return $document;
+            $input = DocumentInput::fromPath($document);
+            $this->validator->validate($input);
+            return $input;
         }
-        
-        throw new DocumentParserException("Invalid document input");
+
+        throw new DocumentParserException("Invalid document input: expected a file path, UploadedFile, or URL.");
     }
 
     protected function structureExtraction(array $extraction, array $options): array

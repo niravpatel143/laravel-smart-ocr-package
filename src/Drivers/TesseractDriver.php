@@ -48,7 +48,7 @@ class TesseractDriver implements OCRDriver
                 'metadata' => [
                     'engine' => 'tesseract',
                     'language' => $options['language'] ?? $this->config['language'] ?? 'eng',
-                    'processing_time' => microtime(true) - LARAVEL_START
+                    'processing_time' => microtime(true) - (defined('LARAVEL_START') ? LARAVEL_START : microtime(true))
                 ]
             ];
         } catch (\Exception $e) {

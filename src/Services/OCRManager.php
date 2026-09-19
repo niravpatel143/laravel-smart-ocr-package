@@ -2,6 +2,7 @@
 
 namespace LaravelSmartOCR\Services;
 
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Manager;
 use LaravelSmartOCR\Contracts\OCRDriver;
 use LaravelSmartOCR\Drivers\ClaudeVisionDriver;
@@ -16,7 +17,7 @@ class OCRManager extends Manager
 
     public function getDefaultDriver(): string
     {
-        return $this->config->get('smart-ocr.default', 'claude');
+        return $this->config->get('smart-ocr.default', 'tesseract');
     }
 
     /**
@@ -82,6 +83,47 @@ class OCRManager extends Manager
     }
 
     // ── Convenience pass-throughs ──────────────────────────────────────────
+
+    /**
+     * Extract all text from an image or document. Returns just the text string.
+     * Accepts a file path, an UploadedFile, or a temp path.
+     * Uses the configured default driver (tesseract by default — 100% free).
+     *
+     * Usage:
+     *   $text = SmartOCR::getText($request->file('image'));
+     *   $text = SmartOCR::getText('/path/to/image.jpg');
+     */
+    public function getText($document, string $language = 'eng'): string
+    {
+        $path = $document instanceof UploadedFile
+            ? $document->getPathname()
+            : $document;
+
+        $result = $this->driver()->extract($path, ['language' => $language]);
+
+        return $result['text'] ?? '';
+    }
+
+    /**
+     * Extract all text using Tesseract — always free, always offline, no API key needed.
+     * Install Tesseract once: https://github.com/UB-Mannheim/tesseract/wiki (Windows)
+     *                          apt install tesseract-ocr (Linux)
+     *                          brew install tesseract (macOS)
+     *
+     * Usage:
+     *   $text = SmartOCR::freeText($request->file('image'));
+     *   $text = SmartOCR::freeText('/path/to/scan.png', 'fra'); // French
+     */
+    public function freeText($document, string $language = 'eng'): string
+    {
+        $path = $document instanceof UploadedFile
+            ? $document->getPathname()
+            : $document;
+
+        $result = $this->driver('tesseract')->extract($path, ['language' => $language]);
+
+        return $result['text'] ?? '';
+    }
 
     public function extract($document, array $options = []): array
     {

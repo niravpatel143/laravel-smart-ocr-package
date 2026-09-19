@@ -29,7 +29,8 @@ class OpenAIVisionDriver implements OCRDriver
             defaultHeaders: [
                 'Authorization: Bearer ' . ($config['api_key'] ?? ''),
             ],
-            timeout: $config['timeout'] ?? 60,
+            timeout:   $config['timeout']    ?? 60,
+            verifySsl: $config['ssl_verify'] ?? true,
         );
     }
 

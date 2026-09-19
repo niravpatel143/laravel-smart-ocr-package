@@ -17,7 +17,7 @@ return [
     |  tesseract — Local Tesseract binary     (requires separate OS install)
     |
     */
-    'default' => env('SMART_OCR_DRIVER', 'claude'),
+    'default' => env('SMART_OCR_DRIVER', 'tesseract'),
 
     /*
     |--------------------------------------------------------------------------
@@ -31,6 +31,7 @@ return [
             'model'      => env('SMART_OCR_CLAUDE_MODEL', 'claude-opus-4-7'),
             'max_tokens' => 4096,
             'timeout'    => 60,
+            'ssl_verify' => env('SMART_OCR_SSL_VERIFY', true),
         ],
 
         'openai' => [
@@ -38,6 +39,7 @@ return [
             'model'      => env('SMART_OCR_OPENAI_MODEL', 'gpt-4o'),
             'max_tokens' => 4096,
             'timeout'    => 60,
+            'ssl_verify' => env('SMART_OCR_SSL_VERIFY', true),
         ],
 
         'pdf' => [

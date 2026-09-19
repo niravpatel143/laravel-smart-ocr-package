@@ -77,9 +77,19 @@ class TesseractDriver implements OCRDriver
             $textFile = $outputBase . '.txt';
 
             if ($exitCode !== 0 || !file_exists($textFile)) {
-                throw new OCRException(
-                    "Tesseract failed (exit {$exitCode}): " . implode(' ', $cmdOutput)
-                );
+                $stderr = implode(' ', $cmdOutput);
+
+                // Language pack not installed — give a clear, actionable message
+                if (str_contains($stderr, 'Failed loading language') || str_contains($stderr, 'traineddata')) {
+                    throw new OCRException(
+                        "Tesseract language pack '{$lang}' is not installed.\n" .
+                        "Download '{$lang}.traineddata' from https://github.com/tesseract-ocr/tessdata/raw/main/{$lang}.traineddata " .
+                        "and place it in C:\\Program Files\\Tesseract-OCR\\tessdata\\ (Windows) or /usr/share/tesseract-ocr/4.00/tessdata/ (Linux).\n" .
+                        "Only English (eng) is installed by default."
+                    );
+                }
+
+                throw new OCRException("Tesseract failed (exit {$exitCode}): {$stderr}");
             }
 
             $text = file_get_contents($textFile);

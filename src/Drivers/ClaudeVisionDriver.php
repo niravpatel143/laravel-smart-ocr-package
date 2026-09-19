@@ -30,7 +30,8 @@ class ClaudeVisionDriver implements OCRDriver
                 'x-api-key: '         . ($config['api_key'] ?? ''),
                 'anthropic-version: 2023-06-01',
             ],
-            timeout: $config['timeout'] ?? 60,
+            timeout:   $config['timeout']    ?? 60,
+            verifySsl: $config['ssl_verify'] ?? true,
         );
     }
 

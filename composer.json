@@ -1,7 +1,19 @@
 {
     "name": "laravelsmartocr/laravel-smart-ocr",
-    "description": "Laravel Smart OCR & Document Data Extractor — no binary required, uses PHP built-in curl for cloud vision APIs",
-    "keywords": ["laravel", "ocr", "document", "parser", "pdf", "invoice", "receipt", "claude", "openai"],
+    "description": "Laravel OCR package — extract text from images, PDFs, invoices, receipts using Tesseract, Claude Vision, OpenAI GPT-4o. Supports barcode, QR code, table extraction, multi-language OCR, AI cleanup, and document templates. Zero Guzzle dependency.",
+    "keywords": [
+        "laravel", "laravel-package", "ocr", "optical-character-recognition",
+        "image-to-text", "pdf-text-extraction", "pdf-parser",
+        "tesseract", "tesseract-ocr", "tesseract-laravel",
+        "claude-vision", "openai-vision", "gpt4o-vision", "anthropic",
+        "invoice-parser", "invoice-ocr", "receipt-parser", "receipt-ocr",
+        "document-extraction", "document-parser", "document-scanner",
+        "barcode-reader", "qr-code-reader", "qr-code-scanner",
+        "table-extraction", "multi-language-ocr",
+        "ai-ocr", "ai-document-processing", "ai-data-extraction",
+        "image-text-extraction", "scan-to-text", "text-recognition",
+        "php-ocr", "laravel-pdf", "laravel-ai", "laravel-vision"
+    ],
     "license": "MIT",
     "authors": [
         {

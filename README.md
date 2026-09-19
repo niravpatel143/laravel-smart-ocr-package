@@ -1,11 +1,12 @@
-# Laravel Smart OCR
+# Laravel Smart OCR — Image to Text, PDF & Document Data Extraction
 
 [![Latest Stable Version](https://img.shields.io/packagist/v/laravelsmartocr/laravel-smart-ocr.svg)](https://packagist.org/packages/laravelsmartocr/laravel-smart-ocr)
+[![Total Downloads](https://img.shields.io/packagist/dt/laravelsmartocr/laravel-smart-ocr.svg)](https://packagist.org/packages/laravelsmartocr/laravel-smart-ocr)
 [![License](https://img.shields.io/packagist/l/laravelsmartocr/laravel-smart-ocr.svg)](https://packagist.org/packages/laravelsmartocr/laravel-smart-ocr)
 [![PHP](https://img.shields.io/badge/PHP-%5E8.0-blue)](https://www.php.net/)
 [![Laravel](https://img.shields.io/badge/Laravel-9%2F10%2F11%2F12-red)](https://laravel.com/)
 
-A production-ready Laravel package for OCR and document data extraction. Supports Claude Vision, OpenAI Vision, local Tesseract OCR, and native PDF text extraction — all using PHP built-in `curl` with **no Guzzle dependency**.
+**The most complete OCR package for Laravel.** Extract text from images, scanned PDFs, invoices, receipts, contracts, and more — using **Tesseract OCR** (free, offline), **Claude Vision**, **OpenAI GPT-4o Vision**, or native **PDF text extraction**. Supports barcode scanning, QR code reading, table extraction, multi-language OCR (100+ languages), AI-powered cleanup, and template-based field extraction. Zero Guzzle dependency — pure PHP `curl`.
 
 ---
 
@@ -46,14 +47,35 @@ https://github.com/user-attachments/assets/cf248862-b7cb-4504-8969-4e3745fd0e7c
 
 ## Features
 
-- **Four built-in drivers** — Claude Vision, OpenAI Vision, PDF Text, Tesseract OCR
-- **Zero Guzzle dependency** — all HTTP via PHP built-in `curl`
-- **MIME detection from file bytes** — safe for uploaded `.tmp` files; never trusts extension
+- **Image to text extraction** — JPG, PNG, TIFF, BMP, WebP, GIF
+- **PDF text extraction** — digital PDFs (no binary needed) and scanned PDFs via Tesseract
+- **Four built-in OCR drivers** — Tesseract (free/offline), Claude Vision, OpenAI GPT-4o, PDF parser
+- **Invoice & receipt parser** — auto-detect document type, extract fields, amounts, dates
+- **Barcode & QR code reader** — decode 1D/2D barcodes from images via AI vision drivers
+- **Table extraction** — parse structured tables from scanned documents
+- **Multi-language OCR** — 100+ languages via Tesseract (English, Hindi, Arabic, Chinese, Japanese…)
+- **AI-powered cleanup** — fix OCR typos, normalise fields, structure data via OpenAI or Claude
+- **Template-based field extraction** — define regex patterns per document type, reuse across scans
+- **Batch document processing** — process multiple files in one call
+- **Document type detection** — auto-classify as invoice, receipt, contract, purchase order, shipping
 - **SSRF protection** — blocks private IPs, loopback, and cloud metadata endpoints
-- **Template-based extraction** — define field patterns with regex, apply to any document
-- **AI cleanup** — post-process raw OCR text via OpenAI or Anthropic
-- **Remote document support** — fetch URLs with size limits and redirect validation
-- **Laravel 9 / 10 / 11 / 12** compatible
+- **Zero Guzzle dependency** — pure PHP built-in `curl`
+- **Laravel 9 / 10 / 11 / 12** compatible, PHP 8.0+
+
+## Use Cases
+
+| Use Case | How |
+|---|---|
+| **Scan invoices → extract line items** | Tesseract or Claude driver + invoice template |
+| **Receipt OCR for expense tracking** | `SmartOCR::getText($uploadedFile)` — free, offline |
+| **Extract text from any image** | `SmartOCR::freeText($file)` — one line of code |
+| **Read barcodes / QR codes** | `SmartOCR::driver('claude')->extractBarcode($image)` |
+| **Parse scanned contracts** | Tesseract + template field extraction |
+| **Multi-language document processing** | Tesseract with 100+ language packs |
+| **AI document cleanup & structuring** | `AICleanupService::clean()` via OpenAI or Anthropic |
+| **Digitise physical documents** | Any image format → structured JSON output |
+| **Automate purchase order entry** | Document parser + PO template |
+| **PDF data extraction** | PDF driver (no binary) or Tesseract (scanned PDFs) |
 
 ---
 
@@ -494,6 +516,12 @@ The package ships with unit and integration tests using Orchestra Testbench. Ext
 ### v1.0.0
 
 - Initial release
+
+---
+
+## Keywords
+
+`laravel-ocr` `image-to-text` `pdf-text-extraction` `tesseract-laravel` `claude-vision` `openai-vision` `gpt4o-ocr` `invoice-parser` `receipt-ocr` `document-scanner` `barcode-reader` `qr-code-laravel` `multi-language-ocr` `ai-document-extraction` `php-ocr` `scan-to-text` `laravel-pdf-parser` `laravel-ai` `optical-character-recognition` `laravel-document-processing`
 
 ---
 

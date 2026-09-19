@@ -11,11 +11,9 @@ A production-ready Laravel package for OCR and document data extraction. Support
 
 ## Demo
 
-> **Watch the full feature walkthrough** — covers Simple Text extraction, Batch processing, Multi-language OCR, Document Detection, AI Cleanup, Templates, Workflows, and the URL Security demo.
+> **Full feature walkthrough** — Simple Text extraction, Batch processing, Multi-language OCR, Document Detection, AI Cleanup, Templates, Workflows, and URL Security.
 
-<video src="https://github.com/niravpatel143/laravel-smart-ocr-package/raw/main/19.09.2026_15.39.37_REC.mp4" controls width="100%"></video>
-
-> If the video doesn't play inline, [click here to watch the demo](https://github.com/niravpatel143/laravel-smart-ocr-package/blob/main/19.09.2026_15.39.37_REC.mp4).
+https://github.com/user-attachments/assets/cf248862-b7cb-4504-8969-4e3745fd0e7c
 
 ---
 

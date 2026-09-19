@@ -13,17 +13,9 @@ A production-ready Laravel package for OCR and document data extraction. Support
 
 > **Watch the full feature walkthrough** — covers Simple Text extraction, Batch processing, Multi-language OCR, Document Detection, AI Cleanup, Templates, Workflows, and the URL Security demo.
 
-<!-- VIDEO_PLACEHOLDER: Upload your .mp4 to GitHub (see instructions below) and replace this comment with the video embed tag -->
-<!-- Example after upload:
-<video src="https://github.com/USER/REPO/assets/ASSET_ID/VIDEO_ID" controls width="100%"></video>
--->
+<video src="https://github.com/niravpatel143/laravel-smart-ocr-package/raw/main/19.09.2026_15.39.37_REC.mp4" controls width="100%"></video>
 
-> **How to add the video:**
-> 1. Open this README on GitHub → click **Edit** (pencil icon)
-> 2. Drag and drop `19.09.2026_15.31.18_REC.mp4` into the editor text area
-> 3. GitHub will upload it and insert a link like `https://github.com/user/repo/assets/.../file.mp4`
-> 4. Replace the placeholder comment above with that link wrapped in a `<video>` tag
-> 5. Commit the change — the video will play directly in the README
+> If the video doesn't play inline, [click here to watch the demo](https://github.com/niravpatel143/laravel-smart-ocr-package/blob/main/19.09.2026_15.39.37_REC.mp4).
 
 ---
 

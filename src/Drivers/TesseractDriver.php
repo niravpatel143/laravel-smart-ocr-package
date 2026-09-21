@@ -20,6 +20,11 @@ class TesseractDriver implements OCRDriver
         $this->config = $config;
     }
 
+    public function extractText($document, array $options = []): array
+    {
+        return $this->extract($document, $options);
+    }
+
     public function extract($document, array $options = []): array
     {
         $startTime = microtime(true);

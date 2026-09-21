@@ -34,6 +34,11 @@ class OpenAIVisionDriver implements OCRDriver
         );
     }
 
+    public function extractText($document, array $options = []): array
+    {
+        return $this->extract($document, $options);
+    }
+
     public function extract($document, array $options = []): array
     {
         $startTime = microtime(true);

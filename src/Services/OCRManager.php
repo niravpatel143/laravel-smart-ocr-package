@@ -130,6 +130,11 @@ class OCRManager extends Manager
         return $this->driver()->extract($document, $options);
     }
 
+    public function extractText($document, array $options = []): array
+    {
+        return $this->driver()->extract($document, $options);
+    }
+
     public function extractWithTemplate($document, $templateId, array $options = []): array
     {
         $rawText = $this->driver()->extract($document, $options);

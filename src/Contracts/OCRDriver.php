@@ -5,6 +5,8 @@ namespace LaravelSmartOCR\Contracts;
 interface OCRDriver
 {
     public function extract($document, array $options = []): array;
+
+    public function extractText($document, array $options = []): array;
     
     public function extractTable($document, array $options = []): array;
     

@@ -8,6 +8,8 @@
 
 **One API. Seven drivers. One normalized result.** Extract text, tables, bounding boxes, and form fields from images, scanned PDFs, invoices, and contracts — using **Tesseract**, **Google Cloud Vision**, **AWS Textract**, **Azure AI Vision**, **Claude Vision**, **OpenAI GPT-4o**, or native **PDF text extraction** — all behind a single `SmartOCR::` interface.
 
+> **Note:** The `pdf` driver is a text-extraction engine, not an OCR engine. It reads text already embedded in a digital PDF file. For scanned or image-based PDFs, use Tesseract, Google, AWS, or Azure instead.
+
 ---
 
 ## Demo
@@ -57,7 +59,7 @@ use LaravelSmartOCR\Facades\SmartOCR;
 $result = SmartOCR::driver('google')->read($file);
 
 echo $result->text();        // full extracted text
-echo $result->confidence();  // 0.0 – 1.0
+echo $result->confidence();  // float|null — null when provider does not expose a real score
 $result->tables();           // normalized tables
 $result->fields();           // key-value form fields
 $result->toArray();          // complete structured data
@@ -73,19 +75,22 @@ SMART_OCR_DRIVER=google   # or aws, azure, tesseract, claude, openai, pdf
 
 ## Provider Comparison
 
-| Feature | Tesseract | Google Vision | AWS Textract | Azure Vision | Claude | OpenAI |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| Image OCR | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| PDF OCR | ✓ | ✓ | ✓ | ✓ | — | — |
-| Multi-page | — | ✓ (5 pages) | ✓ | ✓ | — | — |
-| Confidence scores | — | ✓ per word | ✓ per word | ✓ per word | 0.95 static | 0.95 static |
-| Bounding boxes | — | ✓ | ✓ | ✓ | — | — |
-| Table extraction | basic | — | ✓ structured | — | prompt-based | prompt-based |
-| Form key-value | — | — | ✓ | — | — | — |
-| Languages | 100+ | 100+ | ~12 | 100+ | auto | auto |
-| Cloud | No | Yes | Yes | Yes | Yes | Yes |
-| Max file size | unlimited | 20 MB | 5 MB sync / async larger | 50 MB | 5 MB | 20 MB |
-| Free tier | ✓ | ✓ 1K/mo | — | ✓ | — | — |
+| Feature | Tesseract | Google Vision | AWS Textract | Azure Vision | Claude | OpenAI | PDF ¹ |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Image OCR | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| Scanned PDF | ✓ | ✓ | ✓ | ✓ | — | — | — |
+| Digital PDF (text layer) | — | — | — | — | — | — | ✓ |
+| Multi-page | — | ✓ (5 pages) | ✓ | ✓ | — | — | ✓ |
+| Confidence scores | — | ✓ per word | ✓ per word | ✓ per word | — | — | — |
+| Bounding boxes | — | ✓ | ✓ | ✓ | — | — | — |
+| Table extraction | basic | — | ✓ structured | — | prompt-based | prompt-based | — |
+| Form key-value | — | — | ✓ | — | — | — | — |
+| Languages | 100+ | 100+ | ~12 | 100+ | auto | auto | from PDF |
+| Cloud | No | Yes | Yes | Yes | Yes | Yes | No |
+| Max file size | unlimited | 20 MB | 5 MB sync / async larger | 50 MB | 5 MB | 20 MB | unlimited |
+| Free tier | ✓ | ✓ 1K/mo | — | ✓ | — | — | ✓ |
+
+> ¹ The `pdf` driver extracts text already embedded in a digital PDF — it is **not** an OCR engine and cannot read scanned or image-based documents.
 
 ---
 
@@ -147,6 +152,8 @@ SMART_OCR_AZURE_KEY=
 ### Tesseract (Free, Offline)
 
 Local OCR via the Tesseract binary. No API key, no cost, works offline.
+
+> **Confidence:** Tesseract does not expose a reliable per-document confidence score through this driver. `$result->confidence()` returns `null`.
 
 **Install:**
 ```bash
@@ -301,6 +308,8 @@ foreach ($result->lines() as $line) {
 
 Uses Anthropic's Claude models with vision capability. Excellent for complex unstructured documents and natural language understanding.
 
+> **Confidence:** Claude does not return a per-element confidence score. `$result->confidence()` returns `null` for this driver.
+
 **Config:**
 ```env
 SMART_OCR_DRIVER=claude
@@ -311,6 +320,7 @@ ANTHROPIC_API_KEY=your-key
 ```php
 $result = SmartOCR::driver('claude')->read('invoice.jpg');
 echo $result->text();
+echo $result->confidence(); // null — Claude does not expose a confidence score
 ```
 
 **Supported formats:** jpg, jpeg, png, gif, webp  
@@ -322,6 +332,8 @@ echo $result->text();
 
 Uses OpenAI's GPT-4o vision capabilities.
 
+> **Confidence:** OpenAI Vision does not return a per-element confidence score. `$result->confidence()` returns `null` for this driver.
+
 **Config:**
 ```env
 SMART_OCR_DRIVER=openai
@@ -332,6 +344,7 @@ OPENAI_API_KEY=your-key
 ```php
 $result = SmartOCR::driver('openai')->read('receipt.png');
 echo $result->text();
+echo $result->confidence(); // null — OpenAI does not expose a confidence score
 ```
 
 **Supported formats:** jpg, jpeg, png, gif, webp  
@@ -341,16 +354,17 @@ echo $result->text();
 
 ### PDF Text Extraction
 
-Extracts text directly from digital (non-scanned) PDFs using `smalot/pdfparser`. 100% confidence, no API needed.
+> **This is not an OCR engine.** It reads the text layer already embedded in a digital PDF using `smalot/pdfparser`. No image recognition is performed, so it cannot process scanned documents or image-based PDFs.
 
 **Usage:**
 ```php
 $result = SmartOCR::driver('pdf')->read('digital-invoice.pdf');
 echo $result->text();
-echo $result->confidence(); // always 1.0
+echo $result->confidence(); // null — text extraction does not produce a confidence score
 ```
 
-**Note:** This only works on digital PDFs with embedded text. For scanned PDFs, use Tesseract, Google, AWS, or Azure.
+**When to use:** The document was exported from Word, Excel, or a similar tool (text is selectable in a PDF viewer).  
+**When NOT to use:** The document is a scan, a photo, or any PDF where text cannot be selected. Use Tesseract, Google, AWS, or Azure instead.
 
 ---
 
@@ -363,7 +377,7 @@ $result = SmartOCR::driver('google')->read($file);
 
 // Text
 $result->text();          // string — full extracted text
-$result->confidence();    // float — 0.0 to 1.0
+$result->confidence();    // float|null — normalized 0.0–1.0; null when provider does not expose a real score
 $result->provider();      // string — 'google', 'aws', 'azure', etc.
 $result->isSuccessful();  // bool
 
@@ -391,7 +405,7 @@ $result->toArray();
     'success'    => true,
     'provider'   => 'google',
     'text'       => 'Invoice\nINV-1001\nTotal: $1,200.00',
-    'confidence' => 0.98,
+    'confidence' => 0.98,   // float|null — null for Tesseract, Claude, OpenAI, PDF
     'pages'      => [
         [
             'page'       => 1,

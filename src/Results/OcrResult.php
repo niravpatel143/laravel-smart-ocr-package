@@ -6,13 +6,16 @@ class OcrResult
 {
     public function __construct(private readonly array $data) {}
 
+    /** Providers that do not expose a genuine confidence score. */
+    private const NO_CONFIDENCE_PROVIDERS = ['tesseract', 'claude', 'openai', 'pdf'];
+
     public static function fromArray(array $data): self
     {
         return new self(array_merge([
             'success'    => true,
             'provider'   => 'unknown',
             'text'       => '',
-            'confidence' => 0.0,
+            'confidence' => null,
             'pages'      => [],
             'lines'      => [],
             'words'      => [],
@@ -32,15 +35,23 @@ class OcrResult
             'success'    => true,
             'provider'   => $provider,
             'text'       => $legacy['text'] ?? '',
-            'confidence' => $legacy['confidence'] ?? 0.0,
+            'confidence' => in_array($provider, self::NO_CONFIDENCE_PROVIDERS, true) ? null : ($legacy['confidence'] ?? null),
             'blocks'     => $legacy['bounds'] ?? [],
             'metadata'   => $legacy['metadata'] ?? [],
             'raw'        => $legacy,
         ]);
     }
 
-    public function text(): string        { return $this->data['text'] ?? ''; }
-    public function confidence(): float   { return (float)($this->data['confidence'] ?? 0.0); }
+    public function text(): string      { return $this->data['text'] ?? ''; }
+    public function confidence(): ?float
+    {
+        $value    = $this->data['confidence'] ?? null;
+        $provider = $this->data['provider'] ?? '';
+        if ($value === null || in_array($provider, self::NO_CONFIDENCE_PROVIDERS, true)) {
+            return null;
+        }
+        return (float) $value;
+    }
     public function provider(): string    { return $this->data['provider'] ?? 'unknown'; }
     public function isSuccessful(): bool  { return (bool)($this->data['success'] ?? false); }
     public function pages(): array        { return $this->data['pages'] ?? []; }

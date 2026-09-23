@@ -1,0 +1,59 @@
+{
+  "status": "succeeded",
+  "analyzeResult": {
+    "modelVersion": "2022-04-30",
+    "readResults": [
+      {
+        "page": 1,
+        "angle": 0.0,
+        "width": 850,
+        "height": 1100,
+        "unit": "pixel",
+        "lines": [
+          {
+            "boundingBox": [100, 100, 300, 100, 300, 130, 100, 130],
+            "text": "Invoice",
+            "confidence": 0.99,
+            "words": [
+              {
+                "boundingBox": [100, 100, 300, 100, 300, 130, 100, 130],
+                "text": "Invoice",
+                "confidence": 0.99
+              }
+            ]
+          },
+          {
+            "boundingBox": [100, 140, 300, 140, 300, 170, 100, 170],
+            "text": "INV-1001",
+            "confidence": 0.98,
+            "words": [
+              {
+                "boundingBox": [100, 140, 300, 140, 300, 170, 100, 170],
+                "text": "INV-1001",
+                "confidence": 0.98
+              }
+            ]
+          },
+          {
+            "boundingBox": [100, 180, 400, 180, 400, 210, 100, 210],
+            "text": "Total: $1,200.00",
+            "confidence": 0.97,
+            "words": [
+              {
+                "boundingBox": [100, 180, 200, 180, 200, 210, 100, 210],
+                "text": "Total:",
+                "confidence": 0.99
+              },
+              {
+                "boundingBox": [210, 180, 400, 180, 400, 210, 210, 210],
+                "text": "$1,200.00",
+                "confidence": 0.97
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "languages": [{"locale": "en", "confidence": 0.99}]
+  }
+}

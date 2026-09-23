@@ -27,7 +27,10 @@
         "smalot/pdfparser": "^2.0"
     },
     "suggest": {
-        "thiagoalessio/tesseract_ocr": "Only if you want to use the local Tesseract driver"
+        "thiagoalessio/tesseract_ocr": "Only if you want to use the local Tesseract driver",
+        "google/cloud-vision": "For Google Cloud Vision OCR driver",
+        "google/auth": "For Google service account authentication",
+        "aws/aws-sdk-php": "For AWS Textract OCR driver"
     },
     "require-dev": {
         "phpunit/phpunit": "^9.0|^10.0",

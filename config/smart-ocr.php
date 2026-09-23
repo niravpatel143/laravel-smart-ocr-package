@@ -26,6 +26,38 @@ return [
     */
     'drivers' => [
 
+        'google' => [
+            'api_key'     => env('SMART_OCR_GOOGLE_API_KEY', ''),
+            'credentials' => env('SMART_OCR_GOOGLE_CREDENTIALS', ''),
+            'project_id'  => env('SMART_OCR_GOOGLE_PROJECT_ID', ''),
+            'location'    => env('SMART_OCR_GOOGLE_LOCATION', 'us'),
+            'timeout'     => env('SMART_OCR_GOOGLE_TIMEOUT', 60),
+            'ssl_verify'  => true,
+        ],
+
+        'aws' => [
+            'key'        => env('AWS_ACCESS_KEY_ID', ''),
+            'secret'     => env('AWS_SECRET_ACCESS_KEY', ''),
+            'region'     => env('SMART_OCR_AWS_TEXTRACT_REGION', env('AWS_DEFAULT_REGION', 'us-east-1')),
+            'timeout'    => env('SMART_OCR_AWS_TIMEOUT', 120),
+            'bucket'     => env('SMART_OCR_AWS_BUCKET', ''),
+            'textract'   => [
+                'region' => env('SMART_OCR_AWS_TEXTRACT_REGION', env('AWS_DEFAULT_REGION', 'us-east-1')),
+            ],
+            's3' => [
+                'bucket' => env('SMART_OCR_AWS_BUCKET', ''),
+                'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+            ],
+        ],
+
+        'azure' => [
+            'endpoint'    => env('SMART_OCR_AZURE_ENDPOINT', ''),
+            'key'         => env('SMART_OCR_AZURE_KEY', ''),
+            'api_version' => env('SMART_OCR_AZURE_API_VERSION', '2023-02-01-preview'),
+            'timeout'     => env('SMART_OCR_AZURE_TIMEOUT', 60),
+            'ssl_verify'  => true,
+        ],
+
         'claude' => [
             'api_key'    => env('ANTHROPIC_API_KEY'),
             'model'      => env('SMART_OCR_CLAUDE_MODEL', 'claude-opus-4-7'),

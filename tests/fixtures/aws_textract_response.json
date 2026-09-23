@@ -1,0 +1,97 @@
+{
+  "DocumentMetadata": {"Pages": 1},
+  "Blocks": [
+    {
+      "BlockType": "PAGE",
+      "Id": "page-1",
+      "Page": 1,
+      "Geometry": {"BoundingBox": {"Left": 0.0, "Top": 0.0, "Width": 1.0, "Height": 1.0}, "Polygon": []}
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-1",
+      "Page": 1,
+      "Text": "Invoice",
+      "Confidence": 99.5,
+      "Geometry": {"BoundingBox": {"Left": 0.1, "Top": 0.05, "Width": 0.2, "Height": 0.04}, "Polygon": []}
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-2",
+      "Page": 1,
+      "Text": "INV-1001",
+      "Confidence": 98.9,
+      "Geometry": {"BoundingBox": {"Left": 0.1, "Top": 0.1, "Width": 0.25, "Height": 0.04}, "Polygon": []}
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-3",
+      "Page": 1,
+      "Text": "Total: $1,200.00",
+      "Confidence": 99.1,
+      "Geometry": {"BoundingBox": {"Left": 0.1, "Top": 0.15, "Width": 0.35, "Height": 0.04}, "Polygon": []}
+    },
+    {
+      "BlockType": "WORD",
+      "Id": "word-1",
+      "Page": 1,
+      "Text": "Invoice",
+      "Confidence": 99.5,
+      "Geometry": {"BoundingBox": {"Left": 0.1, "Top": 0.05, "Width": 0.2, "Height": 0.04}, "Polygon": []}
+    },
+    {
+      "BlockType": "TABLE",
+      "Id": "table-1",
+      "Page": 1,
+      "Confidence": 98.0,
+      "Geometry": {"BoundingBox": {"Left": 0.1, "Top": 0.3, "Width": 0.8, "Height": 0.3}, "Polygon": []},
+      "Relationships": [
+        {"Type": "CHILD", "Ids": ["cell-1-1", "cell-1-2", "cell-2-1", "cell-2-2"]}
+      ]
+    },
+    {
+      "BlockType": "CELL",
+      "Id": "cell-1-1",
+      "Page": 1,
+      "RowIndex": 1,
+      "ColumnIndex": 1,
+      "Confidence": 99.0,
+      "Geometry": {"BoundingBox": {"Left": 0.1, "Top": 0.3, "Width": 0.4, "Height": 0.1}, "Polygon": []},
+      "Relationships": [{"Type": "CHILD", "Ids": ["word-item"]}]
+    },
+    {
+      "BlockType": "CELL",
+      "Id": "cell-1-2",
+      "Page": 1,
+      "RowIndex": 1,
+      "ColumnIndex": 2,
+      "Confidence": 99.0,
+      "Geometry": {"BoundingBox": {"Left": 0.5, "Top": 0.3, "Width": 0.4, "Height": 0.1}, "Polygon": []},
+      "Relationships": [{"Type": "CHILD", "Ids": ["word-price"]}]
+    },
+    {
+      "BlockType": "CELL",
+      "Id": "cell-2-1",
+      "Page": 1,
+      "RowIndex": 2,
+      "ColumnIndex": 1,
+      "Confidence": 99.0,
+      "Geometry": {"BoundingBox": {"Left": 0.1, "Top": 0.4, "Width": 0.4, "Height": 0.1}, "Polygon": []},
+      "Relationships": [{"Type": "CHILD", "Ids": ["word-product"]}]
+    },
+    {
+      "BlockType": "CELL",
+      "Id": "cell-2-2",
+      "Page": 1,
+      "RowIndex": 2,
+      "ColumnIndex": 2,
+      "Confidence": 99.0,
+      "Geometry": {"BoundingBox": {"Left": 0.5, "Top": 0.4, "Width": 0.4, "Height": 0.1}, "Polygon": []},
+      "Relationships": [{"Type": "CHILD", "Ids": ["word-amount"]}]
+    },
+    {"BlockType": "WORD", "Id": "word-item",    "Text": "Item",       "Confidence": 99.0, "Page": 1, "Geometry": {"BoundingBox": {"Left": 0.1, "Top": 0.3, "Width": 0.2, "Height": 0.05}, "Polygon": []}},
+    {"BlockType": "WORD", "Id": "word-price",   "Text": "Price",      "Confidence": 99.0, "Page": 1, "Geometry": {"BoundingBox": {"Left": 0.5, "Top": 0.3, "Width": 0.2, "Height": 0.05}, "Polygon": []}},
+    {"BlockType": "WORD", "Id": "word-product", "Text": "Product A",  "Confidence": 99.0, "Page": 1, "Geometry": {"BoundingBox": {"Left": 0.1, "Top": 0.4, "Width": 0.2, "Height": 0.05}, "Polygon": []}},
+    {"BlockType": "WORD", "Id": "word-amount",  "Text": "$1,200.00",  "Confidence": 99.0, "Page": 1, "Geometry": {"BoundingBox": {"Left": 0.5, "Top": 0.4, "Width": 0.2, "Height": 0.05}, "Polygon": []}}
+  ]
+}

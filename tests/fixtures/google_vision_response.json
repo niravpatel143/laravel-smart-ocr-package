@@ -1,0 +1,62 @@
+{
+  "responses": [
+    {
+      "fullTextAnnotation": {
+        "pages": [
+          {
+            "confidence": 0.98,
+            "blocks": [
+              {
+                "blockType": "TEXT",
+                "confidence": 0.98,
+                "boundingBox": {
+                  "vertices": [
+                    {"x": 100, "y": 100},
+                    {"x": 500, "y": 100},
+                    {"x": 500, "y": 150},
+                    {"x": 100, "y": 150}
+                  ]
+                },
+                "paragraphs": [
+                  {
+                    "words": [
+                      {
+                        "confidence": 0.99,
+                        "boundingBox": {
+                          "vertices": [
+                            {"x": 100, "y": 100},
+                            {"x": 200, "y": 100},
+                            {"x": 200, "y": 150},
+                            {"x": 100, "y": 150}
+                          ]
+                        },
+                        "symbols": [
+                          {"text": "I"},
+                          {"text": "n"},
+                          {"text": "v"},
+                          {"text": "o"},
+                          {"text": "i"},
+                          {"text": "c"},
+                          {"text": "e"}
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "text": "Invoice\nINV-1001\n2026-09-23\nTotal: $1,200.00\n"
+      },
+      "textAnnotations": [
+        {"description": "Invoice\nINV-1001\n2026-09-23\nTotal: $1,200.00\n", "boundingPoly": {"vertices": []}},
+        {"description": "Invoice", "boundingPoly": {"vertices": [{"x": 100,"y": 100},{"x": 200,"y": 100},{"x": 200,"y": 150},{"x": 100,"y": 150}]}},
+        {"description": "INV-1001", "boundingPoly": {"vertices": [{"x": 100,"y": 160},{"x": 250,"y": 160},{"x": 250,"y": 200},{"x": 100,"y": 200}]}},
+        {"description": "2026-09-23", "boundingPoly": {"vertices": [{"x": 100,"y": 210},{"x": 280,"y": 210},{"x": 280,"y": 250},{"x": 100,"y": 250}]}},
+        {"description": "Total:", "boundingPoly": {"vertices": [{"x": 100,"y": 260},{"x": 200,"y": 260},{"x": 200,"y": 300},{"x": 100,"y": 300}]}},
+        {"description": "$1,200.00", "boundingPoly": {"vertices": [{"x": 210,"y": 260},{"x": 350,"y": 260},{"x": 350,"y": 300},{"x": 210,"y": 300}]}}
+      ]
+    }
+  ]
+}

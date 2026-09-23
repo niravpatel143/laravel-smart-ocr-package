@@ -5,15 +5,19 @@ namespace LaravelSmartOCR\Services;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Manager;
 use LaravelSmartOCR\Contracts\OCRDriver;
+use LaravelSmartOCR\Drivers\AwsTextractDriver;
+use LaravelSmartOCR\Drivers\AzureVisionDriver;
 use LaravelSmartOCR\Drivers\ClaudeVisionDriver;
+use LaravelSmartOCR\Drivers\GoogleVisionDriver;
 use LaravelSmartOCR\Drivers\OpenAIVisionDriver;
 use LaravelSmartOCR\Drivers\PdfTextDriver;
 use LaravelSmartOCR\Drivers\TesseractDriver;
 use LaravelSmartOCR\Exceptions\DriverNotAvailableException;
+use LaravelSmartOCR\Results\OcrResult;
 
 class OCRManager extends Manager
 {
-    protected const BUILT_IN_DRIVERS = ['claude', 'openai', 'pdf', 'tesseract'];
+    protected const BUILT_IN_DRIVERS = ['claude', 'openai', 'pdf', 'tesseract', 'google', 'aws', 'azure'];
 
     public function getDefaultDriver(): string
     {
@@ -21,33 +25,38 @@ class OCRManager extends Manager
     }
 
     /**
-     * Resolve an OCR driver by name.
+     * Resolve an OCR driver by name and wrap it in OcrDriverBuilder.
      * Custom drivers: SmartOCR::extend('name', fn() => new MyDriver())
-     * Built-in drivers: claude, openai, pdf, tesseract
+     * Built-in drivers: claude, openai, pdf, tesseract, google, aws, azure
      */
-    public function driver($driver = null)
+    public function driver($driver = null): OcrDriverBuilder
     {
-        $driver = $driver ?? $this->getDefaultDriver();
+        $driverName = $driver ?? $this->getDefaultDriver();
 
-        if (isset($this->customCreators[$driver])) {
-            $resolved = parent::driver($driver);
+        if (isset($this->customCreators[$driverName])) {
+            $resolved = parent::driver($driverName);
 
             if (! $resolved instanceof OCRDriver) {
                 throw new DriverNotAvailableException(
-                    "Custom driver factory for [{$driver}] must return an instance of OCRDriver."
+                    "Custom driver factory for [{$driverName}] must return an instance of OCRDriver."
                 );
             }
 
-            return $resolved;
+            return new OcrDriverBuilder($resolved, $driverName, $this);
         }
 
-        return match ($driver) {
+        $resolvedDriver = match ($driverName) {
             'claude'    => $this->createClaudeDriver(),
             'openai'    => $this->createOpenAIDriver(),
             'pdf'       => $this->createPdfDriver(),
             'tesseract' => $this->createTesseractDriver(),
-            default     => throw DriverNotAvailableException::unknown($driver, self::BUILT_IN_DRIVERS),
+            'google'    => $this->createGoogleDriver(),
+            'aws'       => $this->createAwsDriver(),
+            'azure'     => $this->createAzureDriver(),
+            default     => throw DriverNotAvailableException::unknown($driverName, self::BUILT_IN_DRIVERS),
         };
+
+        return new OcrDriverBuilder($resolvedDriver, $driverName, $this);
     }
 
     // ── Driver factories ──────────────────────────────────────────────────
@@ -79,6 +88,27 @@ class OCRManager extends Manager
         // Binary availability is checked lazily inside the driver on first use.
         return new TesseractDriver(
             $this->config->get('smart-ocr.drivers.tesseract', [])
+        );
+    }
+
+    protected function createGoogleDriver(): OCRDriver
+    {
+        return new GoogleVisionDriver(
+            $this->config->get('smart-ocr.drivers.google', [])
+        );
+    }
+
+    protected function createAwsDriver(): OCRDriver
+    {
+        return new AwsTextractDriver(
+            $this->config->get('smart-ocr.drivers.aws', [])
+        );
+    }
+
+    protected function createAzureDriver(): OCRDriver
+    {
+        return new AzureVisionDriver(
+            $this->config->get('smart-ocr.drivers.azure', [])
         );
     }
 
@@ -154,5 +184,17 @@ class OCRManager extends Manager
     public function extractQRCode($document, array $options = []): array
     {
         return $this->driver()->extractQRCode($document, $options);
+    }
+
+    public function read($document, array $options = []): OcrResult
+    {
+        return $this->driver()->read($document, $options);
+    }
+
+    public function queue($document, ?string $driver = null, array $options = []): \Illuminate\Foundation\Bus\PendingDispatch
+    {
+        $driverName = $driver ?? $this->getDefaultDriver();
+        $path       = is_string($document) ? $document : ($document instanceof \SplFileInfo ? $document->getPathname() : null);
+        return \LaravelSmartOCR\Jobs\ProcessOcrJob::dispatch($path, $driverName, $options);
     }
 }

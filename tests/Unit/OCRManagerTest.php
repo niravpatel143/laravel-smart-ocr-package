@@ -28,7 +28,8 @@ class OCRManagerTest extends TestCase
     public function test_default_driver_is_tesseract(): void
     {
         $driver = $this->ocrManager->driver();
-        $this->assertInstanceOf(TesseractDriver::class, $driver);
+        // driver() now returns OcrDriverBuilder wrapping the underlying driver
+        $this->assertInstanceOf(\LaravelSmartOCR\Services\OcrDriverBuilder::class, $driver);
     }
 
     public function test_unknown_driver_throws_driver_not_available_exception(): void
@@ -72,7 +73,7 @@ class OCRManagerTest extends TestCase
 
     public function test_no_silent_fallback_when_default_is_unknown_driver(): void
     {
-        config(['smart-ocr.default' => 'azure']);
+        config(['smart-ocr.default' => 'nonexistent_driver_xyz']);
 
         $this->expectException(DriverNotAvailableException::class);
         $this->ocrManager->driver();

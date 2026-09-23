@@ -1,4 +1,4 @@
-# Laravel Smart OCR — Image to Text, PDF & Document Data Extraction
+# Laravel Smart OCR — Multi-Provider OCR Platform
 
 [![Latest Stable Version](https://img.shields.io/packagist/v/laravelsmartocr/laravel-smart-ocr.svg)](https://packagist.org/packages/laravelsmartocr/laravel-smart-ocr)
 [![Total Downloads](https://img.shields.io/packagist/dt/laravelsmartocr/laravel-smart-ocr.svg)](https://packagist.org/packages/laravelsmartocr/laravel-smart-ocr)
@@ -6,7 +6,7 @@
 [![PHP](https://img.shields.io/badge/PHP-%5E8.0-blue)](https://www.php.net/)
 [![Laravel](https://img.shields.io/badge/Laravel-9%2F10%2F11%2F12%2F13-red)](https://laravel.com/)
 
-**One facade. Four drivers. Zero Guzzle.** Extract text from images, scanned PDFs, invoices, receipts, and contracts using whichever engine fits your project — **Tesseract** (free, offline), **Claude Vision**, **OpenAI GPT-4o Vision**, or native **PDF text extraction** — all behind a single `SmartOCR::` interface.
+**One API. Seven drivers. One normalized result.** Extract text, tables, bounding boxes, and form fields from images, scanned PDFs, invoices, and contracts — using **Tesseract**, **Google Cloud Vision**, **AWS Textract**, **Azure AI Vision**, **Claude Vision**, **OpenAI GPT-4o**, or native **PDF text extraction** — all behind a single `SmartOCR::` interface.
 
 ---
 
@@ -20,112 +20,72 @@ https://github.com/user-attachments/assets/cf248862-b7cb-4504-8969-4e3745fd0e7c
 
 ## Table of Contents
 
-- [Architecture](#architecture)
-- [30-Second Quick Start](#30-second-quick-start)
-- [Features](#features)
-- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Provider Comparison](#provider-comparison)
 - [Installation](#installation)
 - [Configuration](#configuration)
-- [Drivers](#drivers)
-  - [PDF Text](#pdf-text-driver)
-  - [Tesseract OCR](#tesseract-ocr-driver)
-  - [Claude Vision](#claude-vision-driver)
-  - [OpenAI Vision](#openai-vision-driver)
-- [Basic Usage](#basic-usage)
-- [Structured Extraction](#structured-extraction)
-  - [Document Templates](#document-templates)
-  - [AI Cleanup Service](#ai-cleanup-service)
-- [Advanced Usage](#advanced-usage)
-  - [Extract Tables](#extract-tables)
-  - [Extract Barcodes and QR Codes](#extract-barcodes-and-qr-codes)
-  - [Remote URLs](#remote-urls)
-  - [Custom Drivers](#custom-drivers)
-- [Security](#security)
-- [Testing](#testing)
-- [Changelog](#changelog)
-- [License](#license)
+- [OCR Providers](#ocr-providers)
+  - [Tesseract (Free, Offline)](#tesseract-free-offline)
+  - [Google Cloud Vision](#google-cloud-vision)
+  - [AWS Textract](#aws-textract)
+  - [Azure AI Vision](#azure-ai-vision)
+  - [Claude Vision](#claude-vision)
+  - [OpenAI GPT-4o Vision](#openai-gpt-4o-vision)
+  - [PDF Text Extraction](#pdf-text-extraction)
+- [The OcrResult Object](#the-ocrresult-object)
+- [Fluent API](#fluent-api)
+- [Table Extraction](#table-extraction)
+- [Form Fields Extraction](#form-fields-extraction)
+- [Queue Support](#queue-support)
+- [Error Handling](#error-handling)
+- [Templates](#templates)
+- [AI Cleanup](#ai-cleanup)
+- [Environment Variables Reference](#environment-variables-reference)
 
 ---
 
-## Architecture
-
-The package is built around a single `OCRManager` that exposes a unified driver interface. You pick the driver per call — or set a default in `.env`. All four drivers implement the same `OCRDriver` contract so you can swap engines without touching your application code.
-
-```
-SmartOCR facade
-    └── OCRManager
-            ├── driver('pdf')        → PdfTextDriver       (smalot/pdfparser, free, no binary)
-            ├── driver('tesseract')  → TesseractDriver      (local binary, free, offline)
-            ├── driver('claude')     → ClaudeVisionDriver   (Anthropic API, images + scans)
-            └── driver('openai')     → OpenAIVisionDriver   (OpenAI GPT-4o, images + scans)
-```
-
-Supporting services — `TemplateManager`, `AICleanupService`, `DocumentParser` — layer on top of any driver result.
-
----
-
-## 30-Second Quick Start
+## Quick Start
 
 ```bash
 composer require laravelsmartocr/laravel-smart-ocr
-php artisan vendor:publish --tag=smart-ocr-config
 ```
 
 ```php
 use LaravelSmartOCR\Facades\SmartOCR;
 
-// Free — extract text from a digital PDF (no API key, no binary)
-$result = SmartOCR::driver('pdf')->extract($request->file('doc')->getPathname());
-echo $result['text'];
+// Default driver (set SMART_OCR_DRIVER in .env)
+$result = SmartOCR::driver('google')->read($file);
 
-// Free — extract text from an image via local Tesseract
-$text = SmartOCR::freeText($request->file('image'));
+echo $result->text();        // full extracted text
+echo $result->confidence();  // 0.0 – 1.0
+$result->tables();           // normalized tables
+$result->fields();           // key-value form fields
+$result->toArray();          // complete structured data
+```
 
-// AI — extract text from any image using Claude Vision
-$result = SmartOCR::driver('claude')->extract($request->file('scan')->getPathname());
-echo $result['text'];
+Switch providers with zero code changes — just update your `.env`:
+
+```env
+SMART_OCR_DRIVER=google   # or aws, azure, tesseract, claude, openai, pdf
 ```
 
 ---
 
-## Features
+## Provider Comparison
 
-- **Four built-in drivers** — PDF parser (free), Tesseract (free/offline), Claude Vision, OpenAI GPT-4o
-- **Image to text** — JPG, PNG, TIFF, BMP, WebP, GIF
-- **PDF text extraction** — digital PDFs (PDF driver) and scanned PDFs (Tesseract + Ghostscript)
-- **Table extraction** — `extractTable()` on every driver returns rows × columns
-- **Barcode & QR code decoding** — via Claude or OpenAI vision drivers
-- **Multi-language OCR** — 100+ languages via Tesseract language packs
-- **Template-based field extraction** — define regex patterns per document type, reuse across scans
-- **AI cleanup & structuring** — `AICleanupService` fixes typos, maps fields, structures output
-- **SSRF protection** — 14 private/reserved CIDR blocks, scheme whitelist, redirect validation
-- **MIME detection from bytes** — ignores filename/extension (`.tmp` uploads work out of the box)
-- **Zero Guzzle** — pure PHP built-in `curl`
-- **Laravel 9 / 10 / 11 / 12 / 13** compatible, PHP 8.0+
-
-### Use Cases
-
-| Use Case | How |
-|---|---|
-| Extract text from any uploaded image | `SmartOCR::freeText($file)` — one line, free |
-| Parse a digital PDF | `SmartOCR::driver('pdf')->extract($path)` |
-| Scan invoices → extract fields | `SmartOCR::extractWithTemplate($path, $templateId)` |
-| Read barcodes / QR codes | `SmartOCR::driver('claude')->extractBarcode($path)` |
-| AI-cleanup raw OCR output | `app(AICleanupService::class)->clean($result)` |
-| Multi-language document processing | Tesseract driver with `language` option |
-| Remote document fetch | `app(DocumentParser::class)->parse($url)` |
-
----
-
-## Requirements
-
-| Requirement | Version |
-|---|---|
-| PHP | ^8.0 |
-| Laravel | 9.x – 13.x |
-| smalot/pdfparser | ^2.0 *(PDF driver — installed automatically)* |
-| Tesseract binary | Any recent *(Tesseract driver only)* |
-| Ghostscript binary | Any recent *(Tesseract driver + PDF input only)* |
+| Feature | Tesseract | Google Vision | AWS Textract | Azure Vision | Claude | OpenAI |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| Image OCR | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| PDF OCR | ✓ | ✓ | ✓ | ✓ | — | — |
+| Multi-page | — | ✓ (5 pages) | ✓ | ✓ | — | — |
+| Confidence scores | — | ✓ per word | ✓ per word | ✓ per word | 0.95 static | 0.95 static |
+| Bounding boxes | — | ✓ | ✓ | ✓ | — | — |
+| Table extraction | basic | — | ✓ structured | — | prompt-based | prompt-based |
+| Form key-value | — | — | ✓ | — | — | — |
+| Languages | 100+ | 100+ | ~12 | 100+ | auto | auto |
+| Cloud | No | Yes | Yes | Yes | Yes | Yes |
+| Max file size | unlimited | 20 MB | 5 MB sync / async larger | 50 MB | 5 MB | 20 MB |
+| Free tier | ✓ | ✓ 1K/mo | — | ✓ | — | — |
 
 ---
 
@@ -135,471 +95,571 @@ echo $result['text'];
 composer require laravelsmartocr/laravel-smart-ocr
 ```
 
-Laravel auto-discovers the service provider. Publish the config:
+Publish config:
 
 ```bash
 php artisan vendor:publish --tag=smart-ocr-config
 ```
 
-Publish and run migrations (required only if you use templates):
+### Optional provider dependencies
+
+Install only the SDK for the provider(s) you use:
 
 ```bash
-php artisan vendor:publish --tag=smart-ocr-migrations
-php artisan migrate
+# Google Cloud Vision
+composer require google/cloud-vision google/auth
+
+# AWS Textract
+composer require aws/aws-sdk-php
 ```
+
+Azure Vision uses the REST API directly — no extra package needed.
 
 ---
 
 ## Configuration
 
-Set your driver and API keys in `.env`:
+`config/smart-ocr.php` (or `.env`):
 
 ```env
-# Default driver: pdf | tesseract | claude | openai
-SMART_OCR_DRIVER=pdf
+SMART_OCR_DRIVER=tesseract
 
-# Claude (Anthropic) — required for claude driver
-ANTHROPIC_API_KEY=sk-ant-...
+# Google
+SMART_OCR_GOOGLE_API_KEY=
+SMART_OCR_GOOGLE_CREDENTIALS=/path/to/service-account.json
+SMART_OCR_GOOGLE_PROJECT_ID=
 
-# OpenAI — required for openai driver
-OPENAI_API_KEY=sk-...
+# AWS
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+SMART_OCR_AWS_TEXTRACT_REGION=us-east-1
+SMART_OCR_AWS_BUCKET=my-ocr-bucket
 
-# Tesseract — auto-detected from PATH if not set
-TESSERACT_BINARY="C:\Program Files\Tesseract-OCR\tesseract.exe"
-```
-
-Key options in `config/smart-ocr.php`:
-
-```php
-return [
-    'default' => env('SMART_OCR_DRIVER', 'pdf'),
-
-    'drivers' => [
-        'claude'    => ['api_key' => env('ANTHROPIC_API_KEY'), 'model' => 'claude-opus-4-7', 'timeout' => 60],
-        'openai'    => ['api_key' => env('OPENAI_API_KEY'),    'model' => 'gpt-4o',           'timeout' => 60],
-        'pdf'       => ['max_pages' => 100],
-        'tesseract' => ['binary' => env('TESSERACT_BINARY', ''), 'language' => 'eng', 'timeout' => 60],
-    ],
-
-    'remote_urls' => [
-        'allow_remote_urls' => false, // must opt-in explicitly
-        'max_download_size' => 10 * 1024 * 1024,
-    ],
-];
+# Azure
+SMART_OCR_AZURE_ENDPOINT=https://my-resource.cognitiveservices.azure.com
+SMART_OCR_AZURE_KEY=
 ```
 
 ---
 
-## Drivers
+## OCR Providers
 
-### PDF Text Driver
+### Tesseract (Free, Offline)
 
-Extracts embedded text from **digital PDFs** using `smalot/pdfparser`. No binary required, completely free. Returns an error if the PDF has no text layer (scanned PDF) — use Tesseract or a vision driver in that case.
+Local OCR via the Tesseract binary. No API key, no cost, works offline.
 
-```php
-$result = SmartOCR::driver('pdf')->extract('/path/to/document.pdf');
-
-echo $result['text'];
-echo $result['metadata']['page_count'];
-```
-
-### Tesseract OCR Driver
-
-Calls the Tesseract binary directly via `proc_open()` with a configurable timeout. Supports JPEG, PNG, TIFF, BMP. For PDFs, Ghostscript converts the first page to an image first.
-
-**Install Tesseract:**
-
+**Install:**
 ```bash
-# Ubuntu / Debian
-sudo apt-get install tesseract-ocr
+# Ubuntu/Debian
+apt-get install tesseract-ocr
 
 # macOS
 brew install tesseract
 
-# Windows — download from:
-# https://github.com/UB-Mannheim/tesseract/wiki
+# Windows — download from https://github.com/UB-Mannheim/tesseract/wiki
 ```
 
-```php
-$result = SmartOCR::driver('tesseract')->extract('/path/to/scan.png', [
-    'language' => 'eng', // any installed Tesseract language pack
-    'psm'      => 6,     // page segmentation mode
-]);
+**Config:**
+```env
+SMART_OCR_DRIVER=tesseract
 ```
 
-### Claude Vision Driver
-
-Uses the Anthropic Claude API. Supports JPEG, PNG, GIF, WebP up to 5 MB. Best for complex scanned documents where layout matters.
-
-**Requires:** `ANTHROPIC_API_KEY`
-
+**Usage:**
 ```php
-$result = SmartOCR::driver('claude')->extract('/path/to/invoice.jpg');
+$result = SmartOCR::driver('tesseract')->read('path/to/image.png');
+echo $result->text();
+
+// Force offline (always uses Tesseract)
+$text = SmartOCR::freeText($file);
 ```
 
-### OpenAI Vision Driver
+**Supported formats:** jpg, jpeg, png, tiff, bmp
 
-Uses OpenAI GPT-4o vision. Supports JPEG, PNG, GIF, WebP up to 20 MB.
+---
 
-**Requires:** `OPENAI_API_KEY`
+### Google Cloud Vision
+
+Uses Google's Document Text Detection API. Excellent for complex layouts, multi-language documents, and printed text.
+
+**Install:**
+```bash
+composer require google/cloud-vision google/auth
+```
+
+**Config:**
+```env
+SMART_OCR_GOOGLE_API_KEY=your-api-key
+# OR service account:
+SMART_OCR_GOOGLE_CREDENTIALS=/path/to/service-account.json
+SMART_OCR_GOOGLE_PROJECT_ID=my-project
+```
+
+**Usage:**
+```php
+// Image
+$result = SmartOCR::driver('google')->read('invoice.jpg');
+
+// With language hint
+$result = SmartOCR::driver('google')->language('fr')->read('document.png');
+
+// Uploaded file
+$result = SmartOCR::driver('google')->read($request->file('document'));
+
+// PDF (up to 5 pages synchronous)
+$result = SmartOCR::driver('google')->read('contract.pdf');
+
+echo $result->text();
+echo $result->confidence();  // per-word average
+$result->words();            // [{text, confidence, bounding_box}]
+$result->pages();            // [{page, text, confidence, lines, blocks}]
+```
+
+**Supported formats:** jpg, jpeg, png, gif, bmp, webp, tiff, pdf  
+**Max file size:** 20 MB
+
+---
+
+### AWS Textract
+
+Best-in-class for structured documents — invoices, forms, tables. Automatically uses async processing for files over 5 MB.
+
+**Install:**
+```bash
+composer require aws/aws-sdk-php
+```
+
+**Config:**
+```env
+AWS_ACCESS_KEY_ID=your-key
+AWS_SECRET_ACCESS_KEY=your-secret
+SMART_OCR_AWS_TEXTRACT_REGION=us-east-1
+SMART_OCR_AWS_BUCKET=my-bucket    # required for files > 5 MB
+```
+
+**Usage:**
+```php
+// Standard read (auto sync/async)
+$result = SmartOCR::driver('aws')->read('invoice.pdf');
+
+// Read directly from S3
+$result = SmartOCR::driver('aws')->readFromS3('documents/invoice.pdf');
+
+// Tables
+foreach ($result->tables() as $table) {
+    $table['headers'];   // ['Item', 'Qty', 'Price']
+    $table['rows'];      // [['Item' => 'Widget', 'Qty' => '2', 'Price' => '$10']]
+    $table['page'];      // page number
+}
+
+// Key-value form fields
+foreach ($result->fields() as $field) {
+    $field['key'];        // 'Invoice Number'
+    $field['value'];      // 'INV-1001'
+    $field['confidence']; // 0.99
+}
+```
+
+**Supported formats:** jpg, jpeg, png, pdf, tiff  
+**Sync limit:** 5 MB (auto-upgrades to async + S3 above this)
+
+---
+
+### Azure AI Vision
+
+Uses the Azure Computer Vision Read API (v3.2 / v4.0). Excellent multi-language support and high accuracy on printed documents.
+
+**No extra package needed** — uses the built-in HTTP client.
+
+**Config:**
+```env
+SMART_OCR_AZURE_ENDPOINT=https://my-resource.cognitiveservices.azure.com
+SMART_OCR_AZURE_KEY=your-subscription-key
+```
+
+**Usage:**
+```php
+$result = SmartOCR::driver('azure')->read('document.jpg');
+
+// With language hint
+$result = SmartOCR::driver('azure')->language('en')->read('scan.pdf');
+
+echo $result->text();
+
+foreach ($result->lines() as $line) {
+    $line['text'];         // 'Invoice Total: $1,200'
+    $line['confidence'];   // 0.98
+    $line['bounding_box']; // ['x'=>100,'y'=>200,'width'=>300,'height'=>40,'points'=>[...]]
+}
+```
+
+**Supported formats:** jpg, jpeg, png, bmp, tiff, pdf  
+**Max file size:** 50 MB
+
+---
+
+### Claude Vision
+
+Uses Anthropic's Claude models with vision capability. Excellent for complex unstructured documents and natural language understanding.
+
+**Config:**
+```env
+SMART_OCR_DRIVER=claude
+ANTHROPIC_API_KEY=your-key
+```
+
+**Usage:**
+```php
+$result = SmartOCR::driver('claude')->read('invoice.jpg');
+echo $result->text();
+```
+
+**Supported formats:** jpg, jpeg, png, gif, webp  
+**Max file size:** 5 MB
+
+---
+
+### OpenAI GPT-4o Vision
+
+Uses OpenAI's GPT-4o vision capabilities.
+
+**Config:**
+```env
+SMART_OCR_DRIVER=openai
+OPENAI_API_KEY=your-key
+```
+
+**Usage:**
+```php
+$result = SmartOCR::driver('openai')->read('receipt.png');
+echo $result->text();
+```
+
+**Supported formats:** jpg, jpeg, png, gif, webp  
+**Max file size:** 20 MB
+
+---
+
+### PDF Text Extraction
+
+Extracts text directly from digital (non-scanned) PDFs using `smalot/pdfparser`. 100% confidence, no API needed.
+
+**Usage:**
+```php
+$result = SmartOCR::driver('pdf')->read('digital-invoice.pdf');
+echo $result->text();
+echo $result->confidence(); // always 1.0
+```
+
+**Note:** This only works on digital PDFs with embedded text. For scanned PDFs, use Tesseract, Google, AWS, or Azure.
+
+---
+
+## The OcrResult Object
+
+All providers return the same `OcrResult` object:
 
 ```php
-$result = SmartOCR::driver('openai')->extract('/path/to/image.png');
+$result = SmartOCR::driver('google')->read($file);
+
+// Text
+$result->text();          // string — full extracted text
+$result->confidence();    // float — 0.0 to 1.0
+$result->provider();      // string — 'google', 'aws', 'azure', etc.
+$result->isSuccessful();  // bool
+
+// Structure
+$result->pages();   // array of pages with text, confidence, lines, blocks
+$result->lines();   // array of lines with text, confidence, bounding_box
+$result->words();   // array of words with text, confidence, bounding_box
+$result->blocks();  // array of blocks (Google-style paragraph groups)
+$result->tables();  // array of tables with headers and rows
+$result->fields();  // array of key-value pairs (AWS Textract forms)
+
+// Raw & meta
+$result->raw();       // original provider response, unmodified
+$result->metadata();  // engine, language, processing info
+$result->errors();    // any non-fatal errors
+
+// Full structured array
+$result->toArray();
+```
+
+### toArray() schema
+
+```php
+[
+    'success'    => true,
+    'provider'   => 'google',
+    'text'       => 'Invoice\nINV-1001\nTotal: $1,200.00',
+    'confidence' => 0.98,
+    'pages'      => [
+        [
+            'page'       => 1,
+            'text'       => '...',
+            'confidence' => 0.98,
+            'lines'      => [...],
+            'blocks'     => [...],
+        ],
+    ],
+    'lines'      => [
+        ['text' => 'Invoice', 'confidence' => 0.99, 'bounding_box' => ['x'=>100,'y'=>100,'width'=>200,'height'=>30,'points'=>[...]]],
+    ],
+    'words'      => [...],
+    'blocks'     => [...],
+    'tables'     => [...],
+    'fields'     => [...],
+    'metadata'   => ['engine' => 'google-vision', 'language' => 'auto'],
+    'raw'        => [...],   // original API response
+    'errors'     => [],
+]
+```
+
+### Bounding box format
+
+Every word, line, and block has a normalized bounding box:
+
+```php
+[
+    'x'      => 100,    // left edge in pixels
+    'y'      => 200,    // top edge in pixels
+    'width'  => 300,    // width in pixels
+    'height' => 40,     // height in pixels
+    'points' => [       // four corner points
+        ['x' => 100, 'y' => 200],
+        ['x' => 400, 'y' => 200],
+        ['x' => 400, 'y' => 240],
+        ['x' => 100, 'y' => 240],
+    ],
+]
 ```
 
 ---
 
-## Basic Usage
+## Fluent API
 
-### Facade — extract text
+The `driver()` method returns a fluent builder:
 
 ```php
-use LaravelSmartOCR\Facades\SmartOCR;
+// Language hint
+$result = SmartOCR::driver('google')
+    ->language('fr')
+    ->read($file);
 
-// Returns full result array
-$result = SmartOCR::driver('pdf')->extract('/path/to/document.pdf');
+// Fallback to Tesseract if cloud fails
+$result = SmartOCR::driver('azure')
+    ->fallback('tesseract')
+    ->read($file);
 
-echo $result['text'];         // extracted text
-echo $result['confidence'];   // 0.0–1.0
-print_r($result['metadata']); // engine, processing_time, page_count, etc.
+// Async mode flag (useful for future async drivers)
+$result = SmartOCR::driver('aws')
+    ->async()
+    ->read($file);
 
-// Returns just the text string (uses default driver)
-$text = SmartOCR::getText('/path/to/document.pdf');
-
-// Always uses Tesseract — free, offline, no API key
-$text = SmartOCR::freeText('/path/to/scan.png');
-$text = SmartOCR::freeText('/path/to/scan.png', 'fra'); // French
+// Chain with fallback
+$result = SmartOCR::driver('google')
+    ->language('en')
+    ->fallback('tesseract')
+    ->read($request->file('invoice'));
 ```
 
-### extractText() — same as extract()
+---
+
+## Table Extraction
 
 ```php
-// extractText() is an alias for extract() — both return the same array
-$result = SmartOCR::driver('tesseract')->extractText('/path/to/image.jpg');
-echo $result['text'];
-```
+$result = SmartOCR::driver('aws')->read('invoice.pdf');
 
-### File uploads (UploadedFile)
+foreach ($result->tables() as $table) {
+    echo "Page: " . $table['page'] . "\n";
+    echo "Headers: " . implode(', ', $table['headers']) . "\n";
 
-Uploaded files have a `.tmp` extension — the package reads MIME type from file bytes, so no renaming is needed:
-
-```php
-public function upload(Request $request): JsonResponse
-{
-    $request->validate(['file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240']);
-
-    $path   = $request->file('file')->getPathname(); // .tmp extension is fine
-    $result = SmartOCR::driver('pdf')->extract($path);
-
-    return response()->json($result);
-}
-```
-
-### Dependency injection
-
-```php
-use LaravelSmartOCR\Services\OCRManager;
-
-class InvoiceController extends Controller
-{
-    public function __construct(private OCRManager $ocr) {}
-
-    public function process(Request $request): JsonResponse
-    {
-        $path   = $request->file('invoice')->getPathname();
-        $result = $this->ocr->driver('claude')->extract($path);
-        return response()->json($result);
+    foreach ($table['rows'] as $row) {
+        echo $row['Item'] . ' — ' . $row['Price'] . "\n";
     }
 }
 ```
 
+Output structure:
+```php
+[
+    [
+        'page'    => 1,
+        'headers' => ['Item', 'Quantity', 'Price', 'Total'],
+        'rows'    => [
+            ['Item' => 'Widget A', 'Quantity' => '2', 'Price' => '$10.00', 'Total' => '$20.00'],
+        ],
+    ],
+]
+```
+
+> Table extraction is supported by **AWS Textract** (structured) and basic parsing for Tesseract/PDF. Google and Azure return `[]`.
+
 ---
 
-## Structured Extraction
+## Form Fields Extraction
 
-### Document Templates
-
-Templates define named fields with regex patterns. Once created, apply them to any extracted text to get a structured key–value result.
-
-**Create a template:**
+AWS Textract automatically detects key-value pairs in forms:
 
 ```php
-use LaravelSmartOCR\Services\TemplateManager;
+$result = SmartOCR::driver('aws')->read('form.pdf');
 
-app(TemplateManager::class)->create([
-    'name'   => 'Invoice',
-    'type'   => 'invoice',
-    'fields' => [
-        [
-            'key'     => 'invoice_number',
-            'label'   => 'Invoice Number',
-            'type'    => 'string',
-            'pattern' => '/Invoice\s*#?\s*(\d+)/i',
-        ],
-        [
-            'key'     => 'total',
-            'label'   => 'Total Amount',
-            'type'    => 'currency',
-            'pattern' => '/Total\s*:?\s*\$?([\d,]+\.?\d*)/i',
-        ],
-        [
-            'key'   => 'date',
-            'label' => 'Invoice Date',
-            'type'  => 'date',
-        ],
-    ],
-]);
-```
-
-**Apply a template:**
-
-```php
-// Extracts with default driver, then applies template field patterns
-$result = SmartOCR::extractWithTemplate('/path/to/invoice.pdf', $templateId);
-
-echo $result['fields']['invoice_number']['value'];
-echo $result['fields']['total']['confidence']; // 0.0–1.0
-```
-
-**Auto-detect template from content:**
-
-```php
-$raw      = SmartOCR::driver('pdf')->extract('/path/to/document.pdf');
-$template = app(TemplateManager::class)->findTemplateByContent($raw['text']);
-
-if ($template) {
-    $structured = app(TemplateManager::class)->applyTemplate($raw, $template->id);
+foreach ($result->fields() as $field) {
+    echo $field['key'] . ': ' . $field['value'];
+    echo ' (' . round($field['confidence'] * 100) . "% confidence)\n";
 }
-```
-
-**Export and import templates as JSON:**
-
-```php
-// Export
-$json = app(TemplateManager::class)->exportTemplate($templateId);
-file_put_contents(storage_path('app/invoice-template.json'), $json);
-
-// Import — path must be inside storage_path() for security
-$template = app(TemplateManager::class)->importTemplate(
-    storage_path('app/invoice-template.json')
-);
-```
-
-### AI Cleanup Service
-
-Post-process raw OCR output to fix typos, normalise values, map fields, and structure data. Basic rules require no API key.
-
-```php
-use LaravelSmartOCR\Services\AICleanupService;
-
-$raw = SmartOCR::driver('tesseract')->extract('/path/to/scan.jpg');
-
-// Basic rules — no API key needed
-// Fixes common OCR errors (rn→m, 0↔O) and normalises field types
-$cleaned = app(AICleanupService::class)->clean($raw);
-
-// AI-powered cleanup via OpenAI or Anthropic
-$cleaned = app(AICleanupService::class)->clean($raw, [
-    'provider'      => 'openai',   // 'openai' | 'anthropic'
-    'document_type' => 'invoice',
-]);
-
-echo $cleaned['text'];
-```
-
-**Correct typos only:**
-
-```php
-$fixed = app(AICleanupService::class)->correctTypos($raw['text']);
-```
-
-**Structure data by document type:**
-
-```php
-$structured = app(AICleanupService::class)->structureData($raw, 'invoice');
-// Returns normalised fields inferred from document type
-```
-
-**Field mapping with fuzzy matching:**
-
-```php
-$mapped = app(AICleanupService::class)->mapFields($raw, [
-    'invoice_id'   => 'invoice_number',
-    'vendor'       => [
-        'alternatives' => ['vendor_name', 'supplier', 'from'],
-        'default'      => 'Unknown',
-    ],
-    'total_amount' => ['field' => 'total', 'transform' => 'trim'],
-]);
+// Invoice Number: INV-1001 (99% confidence)
+// Date: 2026-09-23 (98% confidence)
+// Total: $1,200.00 (99% confidence)
 ```
 
 ---
 
-## Advanced Usage
+## Queue Support
 
-### Extract Tables
-
-All four drivers support `extractTable()`. Returns an array of rows; each row is an array of cell strings.
-
-```php
-$result = SmartOCR::driver('tesseract')->extractTable('/path/to/table-scan.png');
-
-foreach ($result['table'] as $row) {
-    echo implode(' | ', $row) . "\n";
-}
-
-// Raw text is also available
-echo $result['raw_text'];
-```
-
-### Extract Barcodes and QR Codes
-
-Barcode and QR code extraction is supported by the **Claude** and **OpenAI** drivers only.
-
-```php
-// Barcode
-$result = SmartOCR::driver('claude')->extractBarcode('/path/to/barcode.png');
-// $result['barcodes'] — array of decoded values
-
-// QR code
-$result = SmartOCR::driver('openai')->extractQRCode('/path/to/qrcode.png');
-// $result['barcodes'] — array of decoded values
-```
-
-### Remote URLs
-
-Remote URL fetching is **disabled by default** to prevent SSRF. Enable explicitly in config:
-
-```php
-// config/smart-ocr.php
-'remote_urls' => [
-    'allow_remote_urls' => true,
-],
-```
-
-```php
-use LaravelSmartOCR\Services\DocumentParser;
-
-$result = app(DocumentParser::class)->parse('https://example.com/invoice.pdf');
-
-if ($result['success']) {
-    echo $result['text'];
-} else {
-    echo $result['error']; // SSRF block | HTTP error | size exceeded
-}
-```
-
-Private IPs, loopback addresses (`127.x`, `::1`), and cloud metadata endpoints (`169.254.x`) are always blocked regardless of config.
-
-### Custom Drivers
-
-Implement the `OCRDriver` contract and register via `extend()` in a service provider:
-
-```php
-namespace LaravelSmartOCR\Contracts;
-
-interface OCRDriver
-{
-    public function extract($document, array $options = []): array;
-    public function extractText($document, array $options = []): array;
-    public function extractTable($document, array $options = []): array;
-    public function extractBarcode($document, array $options = []): array;
-    public function extractQRCode($document, array $options = []): array;
-    public function getSupportedLanguages(): array;
-    public function getSupportedFormats(): array;
-}
-```
+Dispatch OCR jobs to the Laravel queue:
 
 ```php
 use LaravelSmartOCR\Facades\SmartOCR;
-use App\OCR\MyCustomDriver;
+use LaravelSmartOCR\Events\OcrCompleted;
+use LaravelSmartOCR\Events\OcrFailed;
 
-// AppServiceProvider::boot()
-SmartOCR::extend('my-driver', function ($app) {
-    return new MyCustomDriver(
-        $app['config']->get('smart-ocr.drivers.my-driver', [])
-    );
+// Dispatch
+SmartOCR::queue('/path/to/invoice.pdf', 'google');
+SmartOCR::queue('/path/to/invoice.pdf', 'aws', ['language' => 'en']);
+
+// Listen for results
+Event::listen(OcrCompleted::class, function (OcrCompleted $event) {
+    $result = $event->result;
+    $driver = $event->driver;
+
+    Log::info("OCR complete via {$driver}: " . substr($result->text(), 0, 100));
 });
 
-SmartOCR::driver('my-driver')->extract('/path/to/file.jpg');
+Event::listen(OcrFailed::class, function (OcrFailed $event) {
+    Log::error("OCR failed via {$event->driver}: " . $event->exception->getMessage());
+});
+```
+
+The job class `LaravelSmartOCR\Jobs\ProcessOcrJob` implements `ShouldQueue` with 3 retries and 300s timeout.
+
+---
+
+## Error Handling
+
+All provider errors are wrapped in package-level exceptions:
+
+```php
+use LaravelSmartOCR\Exceptions\OCRException;
+use LaravelSmartOCR\Exceptions\ConfigurationException;
+use LaravelSmartOCR\Exceptions\AuthenticationException;
+use LaravelSmartOCR\Exceptions\RateLimitException;
+use LaravelSmartOCR\Exceptions\OcrTimeoutException;
+use LaravelSmartOCR\Exceptions\UnsupportedDocumentException;
+use LaravelSmartOCR\Exceptions\ProviderException;
+
+try {
+    $result = SmartOCR::driver('google')->read($file);
+} catch (AuthenticationException $e) {
+    // Invalid API key / credentials
+} catch (RateLimitException $e) {
+    $retryAfter = $e->retryAfter(); // seconds
+    // Queue for retry
+} catch (OcrTimeoutException $e) {
+    // Request timed out
+} catch (UnsupportedDocumentException $e) {
+    // File format not supported by this provider
+} catch (ConfigurationException $e) {
+    // Missing required config key
+} catch (OCRException $e) {
+    // Catch-all for any OCR error
+}
+```
+
+### Retry behavior
+
+Cloud drivers automatically retry on:
+- Rate limit errors (respects `Retry-After`)
+- Timeout errors (exponential backoff)
+- Transient network errors
+
+They do **not** retry on:
+- Authentication errors
+- Unsupported document format
+- Invalid documents
+
+---
+
+## Templates
+
+Extract structured fields from document templates:
+
+```php
+// Apply a saved template
+$result = SmartOCR::extractWithTemplate($file, $templateId);
+
+// Auto-detect template from content
+$parser = app('smart-ocr.parser');
+$result = $parser->parse($file, ['detect_template' => true]);
 ```
 
 ---
 
-## Security
+## AI Cleanup
 
-| Protection | Details |
-|---|---|
-| **SSRF prevention** | 14 private/reserved CIDR ranges blocked; only `http` and `https` schemes allowed |
-| **Redirect validation** | Every redirect target is re-validated before cURL follows it |
-| **Download size cap** | Configurable `max_download_size` (default 10 MB), enforced per-chunk via `CURLOPT_WRITEFUNCTION` |
-| **MIME from bytes** | File type detected via `finfo(FILEINFO_MIME_TYPE)`, never from filename or extension |
-| **Path traversal** | `importTemplate()` enforces `realpath()` boundary inside `storage_path()` |
-| **ReDoS protection** | User-supplied regex patterns run with `@preg_match()` and explicit return-value check |
-| **Process timeout** | Tesseract runs via `proc_open()` with `proc_terminate()` on configurable timeout |
-| **Filename sanitisation** | Downloaded filenames stripped to `[a-zA-Z0-9._-]` characters only |
-| **SSL verification** | `CURLOPT_SSL_VERIFYPEER = true` always enforced |
-| **No Guzzle** | All HTTP via PHP built-in `curl` — minimal third-party attack surface |
+Post-process extracted text with an AI model to correct OCR errors:
 
-**Reporting a vulnerability:** Please do **not** open a public GitHub issue. Email `support@laravelsmartocr.com` with a description and reproduction steps. We aim to respond within 48 hours and will coordinate a fix before any public disclosure.
-
----
-
-## Testing
-
-```bash
-composer install
-./vendor/bin/phpunit
+```php
+$parser = app('smart-ocr.parser');
+$result = $parser->parse($file, [
+    'ai_cleanup' => true,
+    'document_type' => 'invoice',
+]);
 ```
 
-The package ships with unit and integration tests using Orchestra Testbench. No external API calls are made during tests.
-
 ---
 
-## Changelog
+## Environment Variables Reference
 
-### v1.0.2
+```env
+# Default driver
+SMART_OCR_DRIVER=tesseract
 
-- Added Laravel 13 support (`illuminate/support ^13.0`)
-- Extended `orchestra/testbench` constraint to `^9.0|^10.0`
+# Tesseract
+TESSERACT_BINARY=/usr/bin/tesseract
+SMART_OCR_TESSERACT_LANGUAGE=eng
 
-### v1.0.1
+# Google Cloud Vision
+SMART_OCR_GOOGLE_API_KEY=
+SMART_OCR_GOOGLE_CREDENTIALS=/path/to/service-account.json
+SMART_OCR_GOOGLE_PROJECT_ID=
+SMART_OCR_GOOGLE_LOCATION=us
+SMART_OCR_GOOGLE_TIMEOUT=60
 
-- Added `extractText()` as an alias for `extract()` on all four drivers and `OCRManager`
-- Added `extractText()` to the `OCRDriver` contract
+# AWS Textract
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=us-east-1
+SMART_OCR_AWS_TEXTRACT_REGION=us-east-1
+SMART_OCR_AWS_BUCKET=
+SMART_OCR_AWS_TIMEOUT=120
 
-### v1.0.0
+# Azure AI Vision
+SMART_OCR_AZURE_ENDPOINT=
+SMART_OCR_AZURE_KEY=
+SMART_OCR_AZURE_API_VERSION=2023-02-01-preview
+SMART_OCR_AZURE_TIMEOUT=60
 
-- Initial stable release
+# Claude Vision
+ANTHROPIC_API_KEY=
+SMART_OCR_CLAUDE_MODEL=claude-opus-4-7
 
-### v2.0.0 (pre-release)
-
-**New drivers**
-- `ClaudeVisionDriver` — Anthropic Messages API, PHP built-in curl
-- `OpenAIVisionDriver` — GPT-4o vision API, PHP built-in curl
-- `PdfTextDriver` — smalot/pdfparser, no binary required
-- Rewrote `TesseractDriver` — direct `proc_open()`, no PHP wrapper library
-
-**Removed dependencies**
-- Removed `guzzlehttp/guzzle` — replaced with `CurlClient` (PHP built-in curl)
-- Removed `thiagoalessio/tesseract_ocr` PHP wrapper
-- Removed `intervention/image`
-
-**Security hardening**
-- SSRF protection — 14 CIDR block ranges, scheme whitelist, redirect validation
-- MIME detection from file bytes
-- Path traversal fix in `TemplateManager::importTemplate()`
-- ReDoS protection for user-supplied regex patterns
-- `proc_open()` + `proc_terminate()` timeout for Tesseract
+# OpenAI Vision
+OPENAI_API_KEY=
+SMART_OCR_OPENAI_MODEL=gpt-4o
+```
 
 ---
 
 ## License
 
-The MIT License (MIT). Copyright (c) 2024 Laravel Smart OCR Team.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+MIT — see [LICENSE](LICENSE)

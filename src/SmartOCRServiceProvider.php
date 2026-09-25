@@ -86,6 +86,5 @@ class SmartOCRServiceProvider extends ServiceProvider
         }
 
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'smart-ocr');
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
     }
 }

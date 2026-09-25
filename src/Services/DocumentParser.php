@@ -179,11 +179,149 @@ class DocumentParser
         throw new DocumentParserException("Invalid document input: expected a file path, UploadedFile, or URL.");
     }
 
+    /**
+     * Parse a number string into a plain decimal string (no thousands separators).
+     *
+     * Locale conventions:
+     *   en  — comma=thousands, dot=decimal   e.g. "1,234.56" → "1234.56"
+     *   eu  — dot=thousands,  comma=decimal  e.g. "1.234,56" → "1234.56"
+     *   in  — Indian grouping with dot=dec   e.g. "1,23,456.78" → "123456.78"
+     */
+    public function parseNumber(string $raw, string $locale = ''): string
+    {
+        if ($locale === '') {
+            $locale = (string) config('smart-ocr.processing.locale', 'en');
+        }
+
+        $raw = trim($raw);
+
+        if ($locale === 'eu') {
+            // dot = thousands separator, comma = decimal point
+            $raw = str_replace('.', '', $raw);
+            $raw = str_replace(',', '.', $raw);
+        } else {
+            // en / in: comma = thousands separator, dot = decimal point
+            $raw = str_replace(',', '', $raw);
+        }
+
+        // Validate it looks numeric
+        if (! is_numeric($raw)) {
+            return '0';
+        }
+
+        // Normalise to plain decimal string (no trailing .0 for integers)
+        if (strpos($raw, '.') !== false) {
+            $raw = rtrim(rtrim($raw, '0'), '.');
+            if ($raw === '' || $raw === '-') {
+                return '0';
+            }
+            // Ensure at least two decimal places were preserved as-is
+            return $raw;
+        }
+
+        return $raw;
+    }
+
+    /**
+     * Parse a date string into a structured array.
+     *
+     * @return array{iso: string, original: string}|null
+     */
+    public function parseDate(string $raw, ?bool $dayFirst = null): ?array
+    {
+        if ($dayFirst === null) {
+            $dayFirst = (bool) config('smart-ocr.processing.date_day_first', true);
+        }
+
+        $raw = trim($raw);
+
+        // ISO format yyyy-mm-dd — unambiguous
+        if (preg_match('/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/', $raw, $m)) {
+            $iso = sprintf('%04d-%02d-%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
+            if (checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+                return ['iso' => $iso, 'original' => $raw];
+            }
+            return null;
+        }
+
+        // dd/mm/yyyy or mm/dd/yyyy (ambiguous — use $dayFirst)
+        if (preg_match('/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/', $raw, $m)) {
+            $year = (int) $m[3];
+            if ($year < 100) {
+                $year += ($year >= 70 ? 1900 : 2000);
+            }
+            if ($dayFirst) {
+                $day   = (int) $m[1];
+                $month = (int) $m[2];
+            } else {
+                $month = (int) $m[1];
+                $day   = (int) $m[2];
+            }
+            if (checkdate($month, $day, $year)) {
+                $iso = sprintf('%04d-%02d-%02d', $year, $month, $day);
+                return ['iso' => $iso, 'original' => $raw];
+            }
+            return null;
+        }
+
+        // Month name formats: "Jan 02, 2026" or "02 Jan 2026"
+        $months = [
+            'jan' => 1, 'feb' => 2, 'mar' => 3, 'apr' => 4, 'may' => 5, 'jun' => 6,
+            'jul' => 7, 'aug' => 8, 'sep' => 9, 'oct' => 10, 'nov' => 11, 'dec' => 12,
+        ];
+        $monthPattern = 'Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec';
+        if (preg_match('/^(' . $monthPattern . ')[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})$/i', $raw, $m)) {
+            $month = $months[strtolower(substr($m[1], 0, 3))];
+            $day   = (int) $m[2];
+            $year  = (int) $m[3];
+            if (checkdate($month, $day, $year)) {
+                return ['iso' => sprintf('%04d-%02d-%02d', $year, $month, $day), 'original' => $raw];
+            }
+        }
+        if (preg_match('/^(\d{1,2})\s+(' . $monthPattern . ')[a-z]*\.?\s+(\d{4})$/i', $raw, $m)) {
+            $day   = (int) $m[1];
+            $month = $months[strtolower(substr($m[2], 0, 3))];
+            $year  = (int) $m[3];
+            if (checkdate($month, $day, $year)) {
+                return ['iso' => sprintf('%04d-%02d-%02d', $year, $month, $day), 'original' => $raw];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Map a currency symbol or ISO code to an ISO 4217 currency code.
+     */
+    protected function detectCurrency(string $symbol): string
+    {
+        $map = [
+            '$'   => 'USD',
+            '€'   => 'EUR',
+            '£'   => 'GBP',
+            '¥'   => 'JPY',
+            '₹'   => 'INR',
+            'USD' => 'USD',
+            'EUR' => 'EUR',
+            'GBP' => 'GBP',
+            'JPY' => 'JPY',
+            'INR' => 'INR',
+            'CAD' => 'CAD',
+            'AUD' => 'AUD',
+        ];
+        return $map[trim($symbol)] ?? 'USD';
+    }
+
     protected function structureExtraction(array $extraction, array $options): array
     {
+        $ocrConfidence = null;
+        if (isset($extraction['_ocr_result']) && $extraction['_ocr_result'] instanceof \LaravelSmartOCR\Results\OcrResult) {
+            $ocrConfidence = $extraction['_ocr_result']->confidence();
+        }
+
         $structure = [
             'raw_text' => $extraction['text'],
-            'confidence' => $extraction['confidence'] ?? 0,
+            'confidence' => $ocrConfidence,
             'fields' => [],
         ];
         
@@ -209,7 +347,7 @@ class DocumentParser
             if (preg_match($pattern, $text, $matches)) {
                 $fields[$fieldName] = [
                     'value' => trim($matches[1] ?? $matches[0]),
-                    'confidence' => 0.9,
+                    'confidence' => null,
                 ];
             }
         }
@@ -288,28 +426,51 @@ class DocumentParser
     protected function extractAmounts(string $text): array
     {
         $amounts = [];
-        
+
+        // Pattern: optional currency symbol/code before or after the number
+        // Supports: $, €, £, ¥, ₹ and ISO codes USD EUR GBP JPY INR CAD AUD
+        $currencyBefore = '(?P<sym>[$€£¥₹]|USD|EUR|GBP|JPY|INR|CAD|AUD)\s*';
+        $currencyAfter  = '\s*(?P<sym2>USD|EUR|GBP|JPY|INR|CAD|AUD)';
+        $numberPat      = '(?P<num>[0-9]{1,3}(?:[,\.][0-9]{3})*(?:[,\.][0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)';
+
         $patterns = [
-            '/\$\s*([0-9,]+\.?\d*)/',
-            '/([0-9,]+\.?\d*)\s*(?:USD|EUR|GBP|CAD|AUD)/',
-            '/(?:total|amount|price|cost|fee|charge)\s*:?\s*\$?\s*([0-9,]+\.?\d*)/i',
+            '/' . $currencyBefore . $numberPat . '/u',
+            '/' . $numberPat . $currencyAfter . '/u',
+            '/(?:total|amount|price|cost|fee|charge)\s*:?\s*(?P<sym>[$€£¥₹])?\s*(?P<num>[0-9][0-9,\.]*)/iu',
         ];
-        
+
+        $seen = [];
         foreach ($patterns as $pattern) {
-            if (preg_match_all($pattern, $text, $matches)) {
-                foreach ($matches[1] as $match) {
-                    $value = (float) str_replace(',', '', $match);
-                    if ($value > 0) {
-                        $amounts[] = [
-                            'value' => $value,
-                            'formatted' => number_format($value, 2),
-                            'original' => $match,
-                        ];
+            if (preg_match_all($pattern, $text, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $match) {
+                    $raw      = $match[0];
+                    $numStr   = $match['num'] ?? '';
+                    $symStr   = $match['sym'] ?? ($match['sym2'] ?? '');
+
+                    if ($numStr === '') {
+                        continue;
                     }
+
+                    $decimalStr = $this->parseNumber($numStr);
+                    if ($decimalStr === '0' || ! is_numeric($decimalStr)) {
+                        continue;
+                    }
+
+                    $key = $decimalStr . '|' . $symStr;
+                    if (isset($seen[$key])) {
+                        continue;
+                    }
+                    $seen[$key] = true;
+
+                    $amounts[] = [
+                        'amount'   => $decimalStr,
+                        'currency' => $symStr !== '' ? $this->detectCurrency($symStr) : 'USD',
+                        'raw'      => trim($raw),
+                    ];
                 }
             }
         }
-        
+
         return $amounts;
     }
 
@@ -508,48 +669,48 @@ class DocumentParser
                 // Pattern 1: Line starts with quantity (number)
                 if (preg_match('/^\s*(\d+)\s+(.+)/', $line, $matches)) {
                     // Save previous item if exists
-                    if ($currentItem && isset($currentItem['total']) && $currentItem['total'] > 0) {
+                    if ($currentItem && isset($currentItem['total']) && (float) $currentItem['total'] > 0) {
                         $items[] = $currentItem;
                     }
-                    
+
                     // Start new item
                     $currentItem = [
                         'quantity' => intval($matches[1]),
                         'description' => trim($matches[2]),
                         'product_code' => '',
-                        'unit_price' => 0,
-                        'total' => 0
+                        'unit_price' => '0',
+                        'total' => '0',
                     ];
-                    
+
                     // Check if prices are on the same line
                     if (preg_match('/(\d+\.?\d*)\s+(\d+\.?\d*)$/', $currentItem['description'], $priceMatches)) {
-                        $currentItem['unit_price'] = floatval($priceMatches[1]);
-                        $currentItem['total'] = floatval($priceMatches[2]);
+                        $currentItem['unit_price'] = $this->parseNumber($priceMatches[1]);
+                        $currentItem['total'] = $this->parseNumber($priceMatches[2]);
                         $currentItem['description'] = trim(str_replace($priceMatches[0], '', $currentItem['description']));
                     }
-                } 
+                }
                 // Pattern 2: Product code line (starts with letters)
                 elseif ($currentItem && preg_match('/^[A-Z]{3,}/', $line)) {
                     // This is likely a product code
                     if (preg_match('/^([A-Z0-9\-]+)/', $line, $codeMatch)) {
                         $currentItem['product_code'] = $codeMatch[1];
                     }
-                    
+
                     // Check for prices on this line
                     if (preg_match('/(\d+\.?\d*)\s+(\d+\.?\d*)$/', $line, $priceMatches)) {
-                        $currentItem['unit_price'] = floatval($priceMatches[1]);
-                        $currentItem['total'] = floatval($priceMatches[2]);
+                        $currentItem['unit_price'] = $this->parseNumber($priceMatches[1]);
+                        $currentItem['total'] = $this->parseNumber($priceMatches[2]);
                     }
                 }
                 // Pattern 3: Just prices (continuation line)
                 elseif ($currentItem && preg_match('/^\s*(\d+\.?\d*)\s+(\d+\.?\d*)$/', $line, $priceMatches)) {
-                    $currentItem['unit_price'] = floatval($priceMatches[1]);
-                    $currentItem['total'] = floatval($priceMatches[2]);
+                    $currentItem['unit_price'] = $this->parseNumber($priceMatches[1]);
+                    $currentItem['total'] = $this->parseNumber($priceMatches[2]);
                 }
             }
             
             // Don't forget the last item
-            if ($currentItem && isset($currentItem['total']) && $currentItem['total'] > 0) {
+            if ($currentItem && isset($currentItem['total']) && (float) $currentItem['total'] > 0) {
                 $items[] = $currentItem;
             }
         }
@@ -592,19 +753,19 @@ class DocumentParser
                         'quantity' => intval($match[1]),
                         'description' => trim($match[2]),
                         'product_code' => '',
-                        'unit_price' => 0,
-                        'total' => 0
+                        'unit_price' => '0',
+                        'total' => '0',
                     ];
-                    
+
                     if (count($match) == 5) {
                         // Pattern 1 or 3
-                        $item['unit_price'] = floatval($match[3]);
-                        $item['total'] = floatval($match[4]);
+                        $item['unit_price'] = $this->parseNumber($match[3]);
+                        $item['total'] = $this->parseNumber($match[4]);
                     } elseif (count($match) == 6) {
                         // Pattern 2
                         $item['product_code'] = trim($match[3]);
-                        $item['unit_price'] = floatval($match[4]);
-                        $item['total'] = floatval($match[5]);
+                        $item['unit_price'] = $this->parseNumber($match[4]);
+                        $item['total'] = $this->parseNumber($match[5]);
                     }
                     
                     // Extract product code from description if not already found
@@ -639,39 +800,35 @@ class DocumentParser
     protected function extractInvoiceTotals(string $text): array
     {
         $totals = [];
-        
+
+        $toDecimal = function (string $raw): string {
+            return $this->parseNumber($raw);
+        };
+
         // Extract subtotal
         if (preg_match('/SUBTOTAL\s+([\d,]+\.?\d*)/i', $text, $matches)) {
-            $totals['subtotal'] = [
-                'amount' => floatval(str_replace(',', '', $matches[1])),
-                'formatted' => '$' . number_format(floatval(str_replace(',', '', $matches[1])), 2)
-            ];
+            $dec = $toDecimal($matches[1]);
+            $totals['subtotal'] = ['amount' => $dec, 'currency' => 'USD', 'raw' => $matches[1]];
         }
-        
+
         // Extract tax
         if (preg_match('/(?:SALES\s*)?TAX\s+([\d,]+\.?\d*)/i', $text, $matches)) {
-            $totals['tax'] = [
-                'amount' => floatval(str_replace(',', '', $matches[1])),
-                'formatted' => '$' . number_format(floatval(str_replace(',', '', $matches[1])), 2)
-            ];
+            $dec = $toDecimal($matches[1]);
+            $totals['tax'] = ['amount' => $dec, 'currency' => 'USD', 'raw' => $matches[1]];
         }
-        
+
         // Extract shipping
         if (preg_match('/SHIPPING\s*&?\s*HANDLING\s+([\d,]+\.?\d*)/i', $text, $matches)) {
-            $totals['shipping'] = [
-                'amount' => floatval(str_replace(',', '', $matches[1])),
-                'formatted' => '$' . number_format(floatval(str_replace(',', '', $matches[1])), 2)
-            ];
+            $dec = $toDecimal($matches[1]);
+            $totals['shipping'] = ['amount' => $dec, 'currency' => 'USD', 'raw' => $matches[1]];
         }
-        
+
         // Extract total
         if (preg_match('/TOTAL\s*DUE\s+([\d,]+\.?\d*)/i', $text, $matches)) {
-            $totals['total'] = [
-                'amount' => floatval(str_replace(',', '', $matches[1])),
-                'formatted' => '$' . number_format(floatval(str_replace(',', '', $matches[1])), 2)
-            ];
+            $dec = $toDecimal($matches[1]);
+            $totals['total'] = ['amount' => $dec, 'currency' => 'USD', 'raw' => $matches[1]];
         }
-        
+
         return $totals;
     }
 }

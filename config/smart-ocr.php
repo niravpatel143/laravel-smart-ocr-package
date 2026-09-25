@@ -145,6 +145,20 @@ return [
         'max_file_size' => 10 * 1024 * 1024, // 10MB
         'allowed_formats' => ['jpg', 'jpeg', 'png', 'pdf', 'tiff', 'bmp'],
         'pdf_dpi' => 300,
+
+        /*
+         | Number locale used by DocumentParser::parseNumber().
+         | 'en' — comma=thousands, dot=decimal   (1,234.56)
+         | 'eu' — dot=thousands,  comma=decimal  (1.234,56)
+         | 'in' — Indian grouping, dot=decimal   (1,23,456.78)
+         */
+        'locale' => env('SMART_OCR_LOCALE', 'en'),
+
+        /*
+         | For ambiguous date strings like "01/02/2026", treat the first
+         | component as the day (true) or the month (false).
+         */
+        'date_day_first' => env('SMART_OCR_DATE_DAY_FIRST', true),
     ],
 
     /*

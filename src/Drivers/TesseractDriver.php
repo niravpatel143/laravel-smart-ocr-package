@@ -27,9 +27,10 @@ class TesseractDriver implements OCRDriver
 
     public function extract($document, array $options = []): array
     {
-        $startTime = microtime(true);
-        $binary    = $this->resolveBinary();
-        $imagePath = $this->prepareDocument($document);
+        $startTime    = microtime(true);
+        $binary       = $this->resolveBinary();
+        $createdFiles = []; // Track files this driver created so we only delete those
+        $imagePath    = $this->prepareDocument($document, $createdFiles);
 
         try {
             $outputBase = sys_get_temp_dir() . '/ocr_out_' . bin2hex(random_bytes(8));
@@ -101,7 +102,7 @@ class TesseractDriver implements OCRDriver
 
             return [
                 'text'       => $text,
-                'confidence' => 0.0,
+                'confidence' => null,
                 'bounds'     => [],
                 'metadata'   => [
                     'engine'          => 'tesseract',
@@ -111,12 +112,14 @@ class TesseractDriver implements OCRDriver
                 ],
             ];
         } finally {
-            // Clean up temp files
+            // Only delete files this driver created itself (tracked in $createdFiles)
             if (isset($textFile) && file_exists($textFile)) {
                 @unlink($textFile);
             }
-            if ($imagePath !== $document && file_exists($imagePath)) {
-                @unlink($imagePath);
+            foreach ($createdFiles as $createdFile) {
+                if (file_exists($createdFile)) {
+                    @unlink($createdFile);
+                }
             }
         }
     }
@@ -197,28 +200,33 @@ class TesseractDriver implements OCRDriver
         );
     }
 
-    private function prepareDocument(string $document): string
+    /**
+     * @param array $createdFiles Pass-by-reference list of temp files this driver creates.
+     *                            Only these files will be deleted in the finally block.
+     */
+    private function prepareDocument(string $document, array &$createdFiles): string
     {
         if (!file_exists($document)) {
             throw new OCRException("File not found: {$document}");
         }
 
         // Use finfo to detect actual type — uploaded files have .tmp extension
-        $finfo    = new \finfo(FILEINFO_MIME_TYPE);
-        $mime     = $finfo->file($document);
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mime  = $finfo->file($document);
 
         if ($mime === 'application/pdf') {
-            return $this->convertPdfToImage($document);
+            return $this->convertPdfToImage($document, $createdFiles);
         }
 
         if (str_starts_with($mime, 'image/')) {
+            // Return the original path — do NOT add to $createdFiles (we did not create it)
             return $document;
         }
 
         throw new OCRException("Unsupported format for Tesseract (detected: {$mime}). Supported: images and PDF.");
     }
 
-    private function convertPdfToImage(string $pdfPath): string
+    private function convertPdfToImage(string $pdfPath, array &$createdFiles): string
     {
         // Use Ghostscript if available — no PHP package needed
         $gs  = PHP_OS_FAMILY === 'Windows' ? 'gswin64c' : 'gs';
@@ -239,6 +247,9 @@ class TesseractDriver implements OCRDriver
                 "Error: " . implode(' ', $output)
             );
         }
+
+        // Track this temp file so the driver deletes it during cleanup
+        $createdFiles[] = $out;
 
         return $out;
     }

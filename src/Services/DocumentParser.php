@@ -33,6 +33,23 @@ class DocumentParser
 
     public function parse($document, array $options = []): array
     {
+        // Normalize deprecated option name aliases
+        if (isset($options['ai_cleanup']) && !isset($options['use_ai_cleanup'])) {
+            trigger_error(
+                'Option "ai_cleanup" is deprecated; use "use_ai_cleanup" instead.',
+                E_USER_DEPRECATED
+            );
+        }
+        $options['use_ai_cleanup'] = $options['use_ai_cleanup'] ?? $options['ai_cleanup'] ?? false;
+
+        if (isset($options['detect_template']) && !isset($options['auto_detect_template'])) {
+            trigger_error(
+                'Option "detect_template" is deprecated; use "auto_detect_template" instead.',
+                E_USER_DEPRECATED
+            );
+        }
+        $options['auto_detect_template'] = $options['auto_detect_template'] ?? $options['detect_template'] ?? false;
+
         $startTime  = microtime(true);
         $tempManager = new TemporaryDocumentManager(
             $this->app['config']->get('smart-ocr.storage.temp_path')
@@ -128,17 +145,18 @@ class DocumentParser
 
     public function extractMetadata($document): array
     {
+        $finfo    = new \finfo(FILEINFO_MIME_TYPE);
+        $mimeType = $finfo->file($document) ?: 'application/octet-stream';
+
         $metadata = [
-            'file_name' => basename($document),
-            'file_size' => filesize($document),
-            'mime_type' => mime_content_type($document),
-            'created_at' => date('Y-m-d H:i:s', filectime($document)),
+            'file_name'   => basename($document),
+            'file_size'   => filesize($document),
+            'mime_type'   => $mimeType,
+            'created_at'  => date('Y-m-d H:i:s', filectime($document)),
             'modified_at' => date('Y-m-d H:i:s', filemtime($document)),
         ];
-        
-        $extension = strtolower(pathinfo($document, PATHINFO_EXTENSION));
-        
-        if ($extension === 'pdf') {
+
+        if ($mimeType === 'application/pdf') {
             $metadata = array_merge($metadata, $this->extractPdfMetadata($document));
         }
         

@@ -64,6 +64,7 @@ class OcrResult
     public function metadata(): array     { return $this->data['metadata'] ?? []; }
     public function raw(): array          { return $this->data['raw'] ?? []; }
     public function errors(): array       { return $this->data['errors'] ?? []; }
+    public function warnings(): array     { return $this->data['metadata']['warnings'] ?? []; }
     public function schemaVersion(): int  { return (int)($this->data['schema_version'] ?? 1); }
 
     public function toArray(): array

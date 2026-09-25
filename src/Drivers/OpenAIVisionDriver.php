@@ -61,7 +61,7 @@ class OpenAIVisionDriver implements OCRDriver
 
         return [
             'text'       => $text,
-            'confidence' => 0.95,
+            'confidence' => null,
             'bounds'     => [],
             'metadata'   => [
                 'engine'            => 'openai-vision',

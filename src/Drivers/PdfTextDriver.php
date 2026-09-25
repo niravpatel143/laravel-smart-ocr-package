@@ -59,7 +59,7 @@ class PdfTextDriver implements OCRDriver
 
             return [
                 'text'       => $text,
-                'confidence' => 1.0,
+                'confidence' => null,
                 'bounds'     => [],
                 'metadata'   => [
                     'engine'          => 'pdf-text',

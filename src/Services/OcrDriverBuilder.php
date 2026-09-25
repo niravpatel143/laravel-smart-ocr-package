@@ -44,36 +44,37 @@ class OcrDriverBuilder
         return $this;
     }
 
-    public function read(mixed $document): OcrResult
+    public function read(mixed $document, array $options = []): OcrResult
     {
+        $mergedOptions = array_merge($this->options, $options);
         try {
             if ($this->driver instanceof CloudOcrCapable) {
-                return $this->driver->read($document, $this->options);
+                return $this->driver->read($document, $mergedOptions);
             }
             // Legacy driver: wrap extract() result in OcrResult
-            $raw = $this->driver->extract($document, $this->options);
+            $raw = $this->driver->extract($document, $mergedOptions);
             return OcrResult::fromLegacy($raw, $this->driverName);
         } catch (OCRException $e) {
             if ($this->fallbackDriver !== null) {
-                return $this->runFallback($document, $e);
+                return $this->runFallback($document, $e, $mergedOptions);
             }
             throw $e;
         } catch (\Throwable $e) {
             if ($this->fallbackDriver !== null) {
-                return $this->runFallback($document, $e);
+                return $this->runFallback($document, $e, $mergedOptions);
             }
             throw new OCRException($e->getMessage(), (int) $e->getCode(), $e);
         }
     }
 
-    private function runFallback(mixed $document, \Throwable $original): OcrResult
+    private function runFallback(mixed $document, \Throwable $original, array $options = []): OcrResult
     {
         // Scrub any potential secret from the reason string (base64-like tokens)
         $reason = preg_replace('/[A-Za-z0-9+\/]{20,}={0,2}/', '[REDACTED]', $original->getMessage());
 
         try {
             $builder = $this->manager->driver($this->fallbackDriver);
-            $result  = $builder->read($document);
+            $result  = $builder->read($document, $options);
         } catch (\Throwable $fb) {
             throw new OCRException(
                 "Primary driver [{$this->driverName}] and fallback [{$this->fallbackDriver}] both failed: " . $fb->getMessage(),

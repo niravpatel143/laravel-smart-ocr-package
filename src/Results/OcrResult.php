@@ -72,13 +72,17 @@ class OcrResult
     {
         $c = $this->data['cost'] ?? null;
         if ($c === null) return null;
-        return new \LaravelSmartOCR\Results\CostEstimate(
-            amount: (string)($c['amount'] ?? '0'),
-            currency: (string)($c['currency'] ?? 'USD'),
-            pages: (int)($c['pages'] ?? 0),
-            tokens: (int)($c['tokens'] ?? 0),
-            estimated: (bool)($c['estimated'] ?? true),
-        );
+        if ($c instanceof \LaravelSmartOCR\Results\CostEstimate) return $c;
+        if (is_array($c)) {
+            return new \LaravelSmartOCR\Results\CostEstimate(
+                amount: (string)($c['amount'] ?? '0'),
+                currency: (string)($c['currency'] ?? 'USD'),
+                pages: (int)($c['pages'] ?? 0),
+                tokens: (int)($c['tokens'] ?? 0),
+                estimated: (bool)($c['estimated'] ?? true),
+            );
+        }
+        return null;
     }
 
     public function toMarkdown(): string
@@ -90,6 +94,19 @@ class OcrResult
     public function chunks(int $maxTokens = 500, int $overlap = 50): array
     {
         return (new \LaravelSmartOCR\Output\Chunker())->chunk($this->toMarkdown(), $maxTokens, $overlap);
+    }
+
+    public function redact(array $types = [], array $custom = []): self
+    {
+        $redactor = new \LaravelSmartOCR\Services\PiiRedactor();
+        $data     = $this->data;
+        $data['text'] = $redactor->redact($data['text'] ?? '', $types, $custom);
+        return new self($data);
+    }
+
+    public function classify(array $types = []): array
+    {
+        return (new \LaravelSmartOCR\Services\DocumentClassifier())->classify($this, $types);
     }
 
     public function toArray(): array

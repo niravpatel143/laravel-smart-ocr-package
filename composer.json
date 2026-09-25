@@ -1,12 +1,9 @@
 {
     "name": "laravelsmartocr/laravel-smart-ocr",
-    "description": "Laravel OCR package — extract text from images and PDFs using Tesseract, Google Cloud Vision, AWS Textract, Azure AI Vision, Claude Vision, and OpenAI GPT-4o behind a single normalized API.",
+    "description": "Multi-provider OCR for Laravel — Tesseract, Google Vision, AWS Textract, Azure, Mistral, Claude, OpenAI, PDF. Schema extraction, Markdown/RAG output, smart routing, human review, PII redaction.",
     "keywords": [
-        "laravel", "ocr", "optical-character-recognition",
-        "image-to-text", "pdf-text-extraction",
-        "tesseract", "google-vision", "aws-textract", "azure-vision",
-        "claude-vision", "openai-vision",
-        "invoice-parser", "document-extraction"
+        "laravel", "ocr", "tesseract", "google-vision", "aws-textract", "azure",
+        "mistral", "schema-extraction", "document-parsing", "rag", "pii-redaction", "php"
     ],
     "license": "MIT",
     "authors": [

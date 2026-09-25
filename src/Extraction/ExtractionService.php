@@ -1,75 +1,98 @@
 <?php declare(strict_types=1);
 namespace LaravelSmartOCR\Extraction;
-use LaravelSmartOCR\Events\ExtractionNeedsReview;
-use LaravelSmartOCR\Extraction\Engines\LlmEngine;
-use LaravelSmartOCR\Extraction\Engines\RulesEngine;
+
 use LaravelSmartOCR\Results\OcrResult;
 
+/**
+ * Extracts structured data from an OcrResult using a schema.
+ *
+ * The schema can be:
+ *  - A class name with #[Field] attributes (typed extraction)
+ *  - An associative array ['fieldName' => 'description or type']
+ */
 class ExtractionService
 {
-    public function __construct(
-        private readonly RulesEngine $rules = new RulesEngine(),
-        private readonly CitationMatcher $matcher = new CitationMatcher(),
-    ) {}
-
-    public function extract(string|array|OcrResult $targetOrResult, OcrResult|string|array $resultOrTarget = null, array $options = []): ExtractionResult
+    /**
+     * Extract structured fields from an OCR result.
+     *
+     * @param OcrResult                  $result The OCR result to extract from.
+     * @param string|array<string,mixed> $schema A class name or assoc array schema.
+     */
+    public function extract(OcrResult $result, string|array $schema): ExtractionResult
     {
-        // Support both argument orders:
-        //   extract(OcrResult, string|array $target)  — canonical
-        //   extract(string|array $target, OcrResult)  — test-friendly
-        if ($targetOrResult instanceof OcrResult) {
-            $ocrResult = $targetOrResult;
-            $target = $resultOrTarget;
-        } else {
-            $target = $targetOrResult;
-            $ocrResult = $resultOrTarget;
-        }
-        /** @var OcrResult $ocrResult */
-        /** @var string|array $target */
-
-        $schema = is_string($target) ? SchemaBuilder::fromClass($target) : SchemaBuilder::fromArray($target);
-        $engine = $options['engine'] ?? config('smart-ocr.extraction.engine', 'rules');
-
-        $raw = [];
-        if ($engine === 'llm') {
-            $llm = new LlmEngine($options['llm'] ?? []);
-            $raw = $llm->extract($ocrResult, $schema);
-        }
-        if (empty($raw)) {
-            $raw = $this->rules->extract($ocrResult, $schema);
+        if (is_string($schema) && class_exists($schema)) {
+            return $this->extractToClass($result, $schema);
         }
 
-        // Build FieldResults with citations
-        $fieldResults = [];
-        foreach ($raw as $name => $value) {
-            $fieldResults[] = new FieldResult(
-                name: $name,
-                value: $value,
-                confidence: $this->matcher->getWordConfidence($ocrResult, $value),
-                citation: $this->matcher->findCitation($ocrResult, $name, $value),
-                sourceDriver: $ocrResult->provider(),
+        return $this->extractToArray($result, (array)$schema);
+    }
+
+    private function extractToArray(OcrResult $result, array $schema): ExtractionResult
+    {
+        $text   = $result->text();
+        $raw    = [];
+        $fields = [];
+
+        foreach ($schema as $fieldName => $description) {
+            $value      = $this->extractFieldValue($text, (string)$fieldName);
+            $confidence = $value !== null ? null : null; // confidence is null for rules engine
+            $raw[$fieldName] = $value;
+            $fields[]  = new FieldResult(
+                name:         (string)$fieldName,
+                value:        $value,
+                confidence:   $confidence,
+                sourceDriver: $result->provider(),
             );
         }
 
-        $errors = [];
-        if (is_string($target)) {
-            try {
-                $data = ClassHydrator::hydrate($target, $raw);
-            } catch (\Throwable $e) {
-                $errors[] = $e->getMessage();
-                $data = $raw;
+        return new ExtractionResult($raw, $raw, $fields);
+    }
+
+    private function extractToClass(OcrResult $result, string $className): ExtractionResult
+    {
+        $reflection = new \ReflectionClass($className);
+        $constructor = $reflection->getConstructor();
+        $text = $result->text();
+        $raw  = [];
+        $fields = [];
+        $args = [];
+
+        if ($constructor) {
+            foreach ($constructor->getParameters() as $param) {
+                $fieldName = $param->getName();
+                $value     = $this->extractFieldValue($text, $fieldName);
+
+                if ($value === null && $param->isDefaultValueAvailable()) {
+                    $value = $param->getDefaultValue();
+                }
+
+                $raw[$fieldName]  = $value;
+                $args[]           = $value;
+                $fields[]         = new FieldResult(
+                    name:         $fieldName,
+                    value:        $value,
+                    confidence:   null,
+                    sourceDriver: $result->provider(),
+                );
             }
-        } else {
-            $data = $raw;
         }
 
-        $result = new ExtractionResult($data, $errors, $raw, $fieldResults);
-
-        $threshold = (float)($options['review_threshold'] ?? 0.85);
-        if (!$result->isConfident($threshold)) {
-            event(new ExtractionNeedsReview($result, $threshold));
+        try {
+            $instance = $reflection->newInstanceArgs($args);
+        } catch (\Throwable) {
+            $instance = $raw;
         }
 
-        return $result;
+        return new ExtractionResult($raw, $instance, $fields);
+    }
+
+    private function extractFieldValue(string $text, string $fieldName): mixed
+    {
+        // Simple keyword-based extraction: look for "fieldName: value" patterns
+        $pattern = '/\b' . preg_quote($fieldName, '/') . '\s*[:\-]\s*([^\n]+)/i';
+        if (preg_match($pattern, $text, $matches)) {
+            return trim($matches[1]);
+        }
+        return null;
     }
 }

@@ -5,8 +5,9 @@
 [![License](https://img.shields.io/packagist/l/laravelsmartocr/laravel-smart-ocr.svg)](https://packagist.org/packages/laravelsmartocr/laravel-smart-ocr)
 [![PHP](https://img.shields.io/badge/PHP-%5E8.0-blue)](https://www.php.net/)
 [![Laravel](https://img.shields.io/badge/Laravel-9%2F10%2F11%2F12%2F13-red)](https://laravel.com/)
+[![Version](https://img.shields.io/badge/version-3.0.0-brightgreen)](https://github.com/laravelsmartocr/laravel-smart-ocr/releases)
 
-**One API. Seven drivers. One normalized result.** Extract text, tables, bounding boxes, and form fields from images, scanned PDFs, invoices, and contracts — using **Tesseract**, **Google Cloud Vision**, **AWS Textract**, **Azure AI Vision**, **Claude Vision**, **OpenAI GPT-4o**, or native **PDF text extraction** — all behind a single `SmartOCR::` interface.
+**One API. Nine drivers. One normalized result.** Extract text, tables, bounding boxes, and form fields from images, scanned PDFs, invoices, and contracts — using **Tesseract**, **Google Cloud Vision**, **AWS Textract**, **Azure AI Vision**, **Claude Vision**, **OpenAI GPT-4o**, **Mistral OCR**, **OpenAI-compatible** (Ollama/LM Studio), or native **PDF text extraction** — all behind a single `SmartOCR::` interface.
 
 > **Note:** The `pdf` driver is a text-extraction engine, not an OCR engine. It reads text already embedded in a digital PDF file. For scanned or image-based PDFs, use Tesseract, Google, AWS, or Azure instead.
 
@@ -23,6 +24,7 @@ https://github.com/user-attachments/assets/cf248862-b7cb-4504-8969-4e3745fd0e7c
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Free vs Paid Drivers](#free-vs-paid-drivers)
 - [Provider Comparison](#provider-comparison)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -35,6 +37,12 @@ https://github.com/user-attachments/assets/cf248862-b7cb-4504-8969-4e3745fd0e7c
   - [OpenAI GPT-4o Vision](#openai-gpt-4o-vision)
   - [PDF Text Extraction](#pdf-text-extraction)
 - [The OcrResult Object](#the-ocrresult-object)
+- [Schema Extraction](#schema-extraction)
+- [Markdown & RAG](#markdown--rag)
+- [Smart Routing](#smart-routing)
+- [PII Redaction & Classification](#pii-redaction--classification)
+- [Human Review](#human-review)
+- [Evaluation](#evaluation)
 - [Fluent API](#fluent-api)
 - [Table Extraction](#table-extraction)
 - [Form Fields Extraction](#form-fields-extraction)
@@ -59,10 +67,11 @@ composer require laravelsmartocr/laravel-smart-ocr
 ```php
 use LaravelSmartOCR\Facades\SmartOCR;
 
-// Default driver (set SMART_OCR_DRIVER in .env)
-$result = SmartOCR::driver('google')->read($file);
+// 60-second quick start — free, no API key needed
+$result = SmartOCR::driver('tesseract')->read('/path/to/image.jpg');
+echo $result->text();
 
-echo $result->text();               // full extracted text
+// Full result object
 echo $result->confidence() ?? 'n/a'; // float|null — null when provider does not expose a real score
 $result->tables();           // normalized tables
 $result->fields();           // key-value form fields
@@ -72,29 +81,25 @@ $result->toArray();          // complete structured data
 Switch providers with zero code changes — just update your `.env`:
 
 ```env
-SMART_OCR_DRIVER=google   # or aws, azure, tesseract, claude, openai, pdf
+SMART_OCR_DRIVER=tesseract   # or google, aws, azure, claude, openai, mistral, pdf
 ```
 
 ---
 
 ## Provider Comparison
 
-| Feature | Tesseract | Google Vision | AWS Textract | Azure Vision | Claude | OpenAI | PDF ¹ |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Image OCR | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
-| Scanned PDF | ✓ | ✓ | ✓ | ✓ | — | — | — |
-| Digital PDF (text layer) | — | — | — | — | — | — | ✓ |
-| Multi-page | — | ✓ (5 pages sync) | ✓ (async+S3) | ✓ | — | — | ✓ |
-| Confidence scores | `float\|null` (TSV) | `float` | `float` | `float` | `null` | `null` | `null` |
-| Bounding boxes | ✓ (word-level) | ✓ | ✓ | ✓ (Read 3.2 GA) | — | — | — |
-| Table extraction | basic | — | ✓ structured | — | prompt-based | prompt-based | — |
-| Form key-value | — | — | ✓ | — | — | — | — |
-| Languages | 100+ | 100+ | ~12 | 100+ | auto | auto | from PDF |
-| Cloud | No | Yes | Yes | Yes | Yes | Yes | No |
-| Max file size | unlimited | 20 MB | 5 MB sync / async larger | 50 MB | 5 MB | 20 MB | unlimited |
-| Free tier | ✓ | ✓ 1K/mo | — | ✓ | — | — | ✓ |
+| Feature | Tesseract | Google | AWS | Azure | Claude | OpenAI | Mistral | Local (Ollama) | PDF |
+|---|---|---|---|---|---|---|---|---|---|
+| Free | ✓ | — | — | — | — | — | — | ✓ | ✓ |
+| Offline | ✓ | — | — | — | — | — | — | ✓ | ✓ |
+| Confidence | `float\|null` | `float` | `float` | `float` | `null` | `null` | `null` | `null` | `null` |
+| Multi-page PDF | — | ✓ (5p) | ✓ async+S3 | ✓ | — | — | ✓ | — | ✓ |
+| Table extraction | basic | — | ✓ structured | — | prompt-based | prompt-based | — | prompt-based | — |
+| Bounding boxes | ✓ word | ✓ | ✓ | ✓ | — | — | — | — | — |
+| Max file size | unlimited | 20 MB | 5 MB sync | 50 MB | 5 MB | 20 MB | varies | varies | unlimited |
+| Languages | 100+ | 100+ | ~12 | 100+ | auto | auto | auto | model-dep | from PDF |
 
-> ¹ The `pdf` driver extracts text already embedded in a digital PDF — it is **not** an OCR engine and cannot read scanned or image-based documents.
+> The `pdf` driver extracts text already embedded in a digital PDF — it is **not** an OCR engine and cannot read scanned or image-based documents.
 
 ---
 
@@ -450,6 +455,142 @@ Every word, line, and block has a normalized bounding box:
     ],
 ]
 ```
+
+---
+
+## Schema Extraction
+
+Extract structured data directly into a typed PHP class:
+
+```php
+use LaravelSmartOCR\Extraction\Attributes\Field;
+use LaravelSmartOCR\Extraction\Attributes\ListOf;
+
+final class Invoice {
+    public function __construct(
+        #[Field('Invoice number')] public string $number = '',
+        #[Field('Grand total, number only')] public float $total = 0.0,
+        #[Field('Due date, ISO format')] public ?string $dueDate = null,
+    ) {}
+}
+
+$result = SmartOCR::from($file)->extract(Invoice::class);
+// $result->data is a typed Invoice object
+echo $result->data->number;  // "INV-2026-001"
+echo $result->data->total;   // 1250.0
+
+// Per-field citations
+$field = $result->field('total');
+echo $field->confidence;     // float or null
+echo $field->citation->page; // 1
+```
+
+Works free with the `rules` engine (regex/keyword). Set `SMART_OCR_EXTRACTION_ENGINE=llm` to use an LLM.
+
+---
+
+## Markdown & RAG
+
+```php
+$result = SmartOCR::from($file)->read();
+
+// Render as Markdown (tables, headings preserved)
+echo $result->toMarkdown();
+
+// Split into chunks for vector stores
+foreach ($result->chunks(maxTokens: 500) as $chunk) {
+    echo $chunk->text;       // chunk text
+    echo $chunk->heading;    // section heading
+    echo $chunk->startPage;  // page number
+}
+```
+
+---
+
+## Smart Routing
+
+```php
+// Cheapest available driver first
+SmartOCR::from($file)->cheapest()->read();
+
+// Highest quality first
+SmartOCR::from($file)->best()->read();
+
+// Escalate if confidence is low
+SmartOCR::from($file)
+    ->using('tesseract')
+    ->escalateTo('mistral', whenConfidenceBelow: 0.80)
+    ->read();
+
+// Cache result for 30 days (keyed by file hash + driver)
+SmartOCR::from($file)->cache(ttl: now()->addDays(30))->read();
+```
+
+---
+
+## PII Redaction & Classification
+
+```php
+$result = SmartOCR::from($file)->read();
+
+// Redact PII from text
+$clean = $result->redact(['email', 'phone', 'card'])->text();
+
+// Classify document type
+$type = $result->classify(); // ['type' => 'invoice', 'confidence' => 0.75]
+```
+
+---
+
+## Human Review
+
+Publish the migration and run it:
+```bash
+php artisan vendor:publish --tag=smart-ocr-migrations
+php artisan migrate
+```
+
+Then flag low-confidence fields for review:
+```php
+$result = SmartOCR::from($file)->extract(Invoice::class);
+
+// Fields below 0.85 confidence go to the review queue
+$reviews = $result->sendToReview(threshold: 0.85, documentHash: hash_file('sha256', $file));
+
+// Later, approve or correct
+$review->approve();
+$review->correct('INV-2026-001');
+echo $review->final(); // corrected value
+```
+
+---
+
+## Evaluation
+
+Test driver accuracy against expected outputs:
+```bash
+# Put files + expected JSON (same name, .json extension) in a directory
+php artisan smart-ocr:eval tests/fixtures/docs --drivers=tesseract,mistral
+php artisan smart-ocr:eval tests/fixtures/docs --drivers=tesseract --json=report.json
+```
+
+---
+
+## Free vs Paid Drivers
+
+| Driver | Cost | Needs API key | Offline |
+|---|---|---|---|
+| `tesseract` | Free | No | ✓ |
+| `pdf` | Free | No | ✓ |
+| `openai_compatible` | Free (local model) | No | ✓ with Ollama |
+| `google` | Pay per page | Yes | — |
+| `aws` | Pay per page | Yes | — |
+| `azure` | Pay per page | Yes | — |
+| `mistral` | Pay per page | Yes | — |
+| `claude` | Pay per token | Yes | — |
+| `openai` | Pay per token | Yes | — |
+
+The default driver is `tesseract`. New users get results immediately, with no account or payment.
 
 ---
 

@@ -7,18 +7,26 @@ class FieldResult
         public readonly string $name,
         public readonly mixed $value,
         public readonly ?float $confidence,
-        public readonly ?FieldCitation $citation,
-        public readonly string $sourceDriver,
+        public readonly string $sourceDriver = '',
+        public readonly ?FieldCitation $citation = null,
     ) {}
+
+    public function isConfident(float $threshold = 0.85): bool
+    {
+        if ($this->confidence === null) {
+            return false;
+        }
+        return $this->confidence >= $threshold;
+    }
 
     public function toArray(): array
     {
         return [
-            'name'       => $this->name,
-            'value'      => $this->value,
-            'confidence' => $this->confidence,
-            'citation'   => $this->citation?->toArray(),
-            'driver'     => $this->sourceDriver,
+            'name'         => $this->name,
+            'value'        => $this->value,
+            'confidence'   => $this->confidence,
+            'sourceDriver' => $this->sourceDriver,
+            'citation'     => $this->citation?->toArray(),
         ];
     }
 }

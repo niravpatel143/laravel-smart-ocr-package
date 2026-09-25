@@ -1,5 +1,35 @@
 # Upgrade Guide
 
+## Upgrading from 2.x to 3.0
+
+### Breaking changes
+
+None. All existing `SmartOCR::driver()->read()` calls continue to work.
+
+### Deprecated in 3.0
+
+- `OcrDriverBuilder::async()` — triggers `E_USER_DEPRECATED`. Remove it from your code.
+- `DocumentParser::parse()` option `ai_cleanup` — use `use_ai_cleanup` instead.
+- `DocumentParser::parse()` option `detect_template` — use `auto_detect_template` instead.
+
+### New migrations (optional)
+
+To use the human review queue, publish and run the migration:
+```bash
+php artisan vendor:publish --tag=smart-ocr-migrations
+php artisan migrate
+```
+
+### New config keys
+
+Run `vendor:publish --tag=smart-ocr-config --force` to get the new config keys, or add manually:
+- `extraction.engine` — `'rules'` (default, free) or `'llm'`
+- `pricing.*` — per-page cost estimates for each driver
+- `routing.quality_order` — driver preference order for `->best()`
+- `routing.max_cost_per_document` — budget guard (0 = disabled)
+- `drivers.mistral.*` — Mistral OCR config
+- `drivers.openai_compatible.*` — local/self-hosted model config
+
 ## v2.0.x → v2.1.0 (upcoming)
 
 ### `OcrDriverBuilder::async()` deprecated

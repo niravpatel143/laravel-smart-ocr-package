@@ -1,44 +1,92 @@
 <?php declare(strict_types=1);
 namespace LaravelSmartOCR\Extraction;
 
+/**
+ * The result of a schema extraction operation.
+ *
+ * @property-read array $raw  Raw key-value data extracted (field name => value).
+ * @property-read mixed $data Typed object if a class schema was used, otherwise same as $raw.
+ */
 class ExtractionResult
 {
     /** @param FieldResult[] $fields */
     public function __construct(
-        public readonly mixed $data,
-        public readonly array $errors,
         public readonly array $raw,
-        public readonly array $fields = [],
+        public readonly mixed $data,
+        /** @var FieldResult[] */
+        private readonly array $fields = [],
     ) {}
 
+    /**
+     * Return the FieldResult for a named field.
+     */
     public function field(string $name): ?FieldResult
     {
-        foreach ($this->fields as $f) {
-            if ($f->name === $name) return $f;
+        foreach ($this->fields as $field) {
+            if ($field->name === $name) {
+                return $field;
+            }
         }
         return null;
     }
 
-    /** @return FieldResult[] */
+    /**
+     * Return all FieldResult objects.
+     * @return FieldResult[]
+     */
+    public function fields(): array
+    {
+        return $this->fields;
+    }
+
+    /**
+     * Return fields that need review (confidence below threshold or null confidence).
+     * @return FieldResult[]
+     */
     public function needsReview(float $threshold = 0.85): array
     {
-        return array_values(array_filter($this->fields, fn($f) => $f->confidence === null || $f->confidence < $threshold));
+        return array_values(array_filter(
+            $this->fields,
+            fn(FieldResult $f) => !$f->isConfident($threshold)
+        ));
     }
 
+    /**
+     * Return true if all fields meet the confidence threshold.
+     */
     public function isConfident(float $threshold = 0.85): bool
     {
-        return empty($this->needsReview($threshold));
+        return count($this->needsReview($threshold)) === 0;
     }
 
-    public function isSuccessful(): bool { return empty($this->errors); }
-
-    public function toArray(): array
+    /**
+     * Create pending OcrReview rows for fields that need review.
+     * Requires the migration to be run. Returns the created review rows.
+     * @return \LaravelSmartOCR\Models\OcrReview[]
+     */
+    public function sendToReview(float $threshold = 0.85, string $documentHash = ''): array
     {
-        return [
-            'data'   => is_object($this->data) ? (array)$this->data : $this->data,
-            'errors' => $this->errors,
-            'raw'    => $this->raw,
-            'fields' => array_map(fn($f) => $f->toArray(), $this->fields),
-        ];
+        if (!class_exists(\LaravelSmartOCR\Models\OcrReview::class)) {
+            return [];
+        }
+        $reviews = [];
+        foreach ($this->needsReview($threshold) as $field) {
+            try {
+                $review = \LaravelSmartOCR\Models\OcrReview::create([
+                    'document_hash'   => $documentHash,
+                    'driver'          => $field->sourceDriver,
+                    'field_name'      => $field->name,
+                    'extracted_value' => is_scalar($field->value) ? (string)$field->value : json_encode($field->value),
+                    'confidence'      => $field->confidence,
+                    'citation'        => $field->citation?->toArray(),
+                    'status'          => 'pending',
+                ]);
+                event(new \LaravelSmartOCR\Events\ReviewRequested($review));
+                $reviews[] = $review;
+            } catch (\Throwable) {
+                // Skip if table doesn't exist yet
+            }
+        }
+        return $reviews;
     }
 }

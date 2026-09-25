@@ -84,6 +84,38 @@ return [
             'timeout'  => env('TESSERACT_TIMEOUT', 60),
         ],
 
+        'mistral' => [
+            'api_key' => env('SMART_OCR_MISTRAL_KEY', ''),
+            'model'   => env('SMART_OCR_MISTRAL_MODEL', 'mistral-ocr-latest'),
+            'timeout' => env('SMART_OCR_MISTRAL_TIMEOUT', 60),
+        ],
+
+        'openai_compatible' => [
+            'endpoint' => env('SMART_OCR_OPENAI_COMPAT_ENDPOINT', 'http://localhost:11434/v1'),
+            'api_key'  => env('SMART_OCR_OPENAI_COMPAT_KEY', 'ollama'),
+            'model'    => env('SMART_OCR_OPENAI_COMPAT_MODEL', 'llava'),
+            'timeout'  => env('SMART_OCR_OPENAI_COMPAT_TIMEOUT', 60),
+            'prompt'   => env('SMART_OCR_OPENAI_COMPAT_PROMPT', ''),
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Provider Pricing
+    |--------------------------------------------------------------------------
+    |
+    | Price per page in USD — update when providers change their pricing.
+    | Used by CostEstimate and the budget guard.
+    |
+    */
+    'pricing' => [
+        'google'   => ['per_page' => env('SMART_OCR_PRICE_GOOGLE',  '0.0015')],
+        'aws'      => ['per_page' => env('SMART_OCR_PRICE_AWS',     '0.0015')],
+        'azure'    => ['per_page' => env('SMART_OCR_PRICE_AZURE',   '0.001')],
+        'mistral'  => ['per_page' => env('SMART_OCR_PRICE_MISTRAL', '0.001')],
+        'claude'   => ['per_page' => env('SMART_OCR_PRICE_CLAUDE',  '0.003')],
+        'openai'   => ['per_page' => env('SMART_OCR_PRICE_OPENAI',  '0.003')],
     ],
 
     /*
@@ -316,5 +348,34 @@ return [
         'enabled' => true,
         'max_requests' => 60,
         'per_minutes' => 1,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Smart Routing
+    |--------------------------------------------------------------------------
+    |
+    | quality_order: driver names sorted best-to-worst accuracy.
+    | max_cost_per_document: refuse to run a driver if its estimated cost
+    |   exceeds this value (in USD). 0 = no limit.
+    |
+    */
+    'routing' => [
+        'quality_order'         => ['aws','google','azure','mistral','claude','openai','openai_compatible','tesseract','pdf'],
+        'max_cost_per_document' => env('SMART_OCR_MAX_COST', '0'),   // 0 = no limit
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Schema Extraction
+    |--------------------------------------------------------------------------
+    |
+    | Controls the default engine used by ExtractionService.
+    | 'rules' — free regex/heuristic engine (no API key required)
+    | 'llm'   — OpenAI-compatible LLM endpoint (requires api_key)
+    |
+    */
+    'extraction' => [
+        'engine' => env('SMART_OCR_EXTRACTION_ENGINE', 'rules'),
     ],
 ];

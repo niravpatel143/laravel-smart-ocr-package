@@ -14,11 +14,12 @@ class OcrDriverBuilder
     private array $options = [];
     private ?string $fallbackDriver = null;
     private ?DocumentSource $source = null;
+    private ?string $routingMode = null;
+    private ?string $escalateDriver = null;
+    private float $escalateThreshold = 0.80;
+    private int|\DateTimeInterface|\DateInterval|null $cacheTtl = null;
+    private mixed $pendingDocument = null;
 
-    /**
-     * Drivers that support page-range filtering natively.
-     * Others receive a warning in result metadata.
-     */
     private const PAGE_RANGE_CAPABLE_DRIVERS = ['aws', 'azure', 'google', 'pdf'];
 
     public function __construct(
@@ -27,22 +28,29 @@ class OcrDriverBuilder
         private readonly OCRManager $manager,
     ) {}
 
-    public function language(string $language): static
+    // ── Source / fluent input ─────────────────────────────────────────────
+
+    public function from(mixed $document): static
     {
-        $this->options['language'] = $language;
+        $this->pendingDocument = $document;
         return $this;
     }
 
-    /**
-     * @deprecated async() is a no-op — async processing is handled automatically by each driver.
-     *             This method will be removed in v3.0.
-     */
-    public function async(): static
+    public function withSource(DocumentSource $source): static
     {
-        trigger_error(
-            'OcrDriverBuilder::async() is deprecated and has no effect. Async processing is handled automatically. It will be removed in v3.0.',
-            E_USER_DEPRECATED
-        );
+        $this->source = $source;
+        return $this;
+    }
+
+    public function pages(string $range): static
+    {
+        $this->options['pages'] = $range;
+        return $this;
+    }
+
+    public function language(string $language): static
+    {
+        $this->options['language'] = $language;
         return $this;
     }
 
@@ -52,122 +60,187 @@ class OcrDriverBuilder
         return $this;
     }
 
-    /**
-     * Store a pre-resolved DocumentSource (set by OCRManager::from()).
-     */
-    public function withSource(DocumentSource $source): static
-    {
-        $this->source = $source;
-        return $this;
-    }
-
-    /**
-     * Set a page range (e.g. '1-3', '2') to pass to the driver.
-     * Drivers that do not support page ranges will emit a warning in result metadata.
-     */
-    public function pages(string $range): static
-    {
-        $this->options['pages'] = $range;
-        return $this;
-    }
-
-    /**
-     * Also usable as a driver alias (to match the from() style).
-     */
     public function using(string $driver): static
     {
-        // Rebuild with a different driver via the manager
         return $this->manager->driver($driver)
             ->withOptions($this->options)
             ->withFallback($this->fallbackDriver)
-            ->withSource($this->source);
+            ->withSource($this->source ?? DocumentSource::parse($this->pendingDocument ?? ''));
     }
 
-    /**
-     * Fluent alias for driver() when chained from from().
-     */
     public function driver(string $driver): static
     {
         return $this->using($driver);
     }
 
-    /**
-     * Internal: merge an options array (used by using()/driver()).
-     */
     public function withOptions(array $options): static
     {
         $this->options = array_merge($this->options, $options);
         return $this;
     }
 
-    /**
-     * Internal: carry over fallback (used by using()/driver()).
-     */
     public function withFallback(?string $driver): static
     {
         $this->fallbackDriver = $driver;
         return $this;
     }
 
-    /**
-     * Run OCR on the given document (or the stored source).
-     *
-     * @param mixed|null $document File path, UploadedFile, or DocumentSource.
-     *                             If null and withSource() was called, the stored source is used.
-     */
+    // ── Routing helpers ───────────────────────────────────────────────────
+
+    public function cheapest(): self
+    {
+        $clone = clone $this;
+        $clone->routingMode = 'cheapest';
+        return $clone;
+    }
+
+    public function best(): self
+    {
+        $clone = clone $this;
+        $clone->routingMode = 'best';
+        return $clone;
+    }
+
+    public function escalateTo(string $driver, float $whenConfidenceBelow = 0.80): self
+    {
+        $clone = clone $this;
+        $clone->escalateDriver = $driver;
+        $clone->escalateThreshold = $whenConfidenceBelow;
+        return $clone;
+    }
+
+    public function cache(int|\DateTimeInterface|\DateInterval $ttl = 3600): self
+    {
+        $clone = clone $this;
+        $clone->cacheTtl = $ttl;
+        return $clone;
+    }
+
+    // ── Async (deprecated no-op) ──────────────────────────────────────────
+
+    public function async(): static
+    {
+        trigger_error('OcrDriverBuilder::async() is deprecated and has no effect. Remove it from your code.', E_USER_DEPRECATED);
+        return $this;
+    }
+
+    // ── Main read() ───────────────────────────────────────────────────────
+
     public function read(mixed $document = null, array $options = []): OcrResult
     {
-        // Resolve the actual document to process
-        $resolvedDocument = $document ?? ($this->source?->path());
-        if ($resolvedDocument === null) {
+        $resolved = $document ?? ($this->source?->path()) ?? $this->pendingDocument;
+        if ($resolved === null) {
             throw new OCRException('No document source provided. Pass a path to read() or use SmartOCR::from().');
         }
 
         $mergedOptions = array_merge($this->options, $options);
 
-        // Warn if page range was requested but driver doesn't natively support it
+        // Warn if page range unsupported
         if (isset($mergedOptions['pages']) && !in_array($this->driverName, self::PAGE_RANGE_CAPABLE_DRIVERS, true)) {
             $mergedOptions['_page_range_warning'] = "Driver [{$this->driverName}] does not support page ranges; 'pages' option was ignored.";
         }
 
+        // Routing mode: pick best/cheapest driver automatically
+        if ($this->routingMode !== null) {
+            $router    = new OcrRouter();
+            $available = array_keys(array_filter(
+                config('smart-ocr.drivers', []),
+                fn($cfg) => !empty($cfg['api_key'] ?? $cfg['key'] ?? $cfg['binary'] ?? true)
+            ));
+            $ordered    = $this->routingMode === 'cheapest' ? $router->cheapestOrder($available) : $router->bestOrder($available);
+            $driverName = $ordered[0] ?? $this->driverName;
+            if ($driverName !== $this->driverName) {
+                $builder = $this->manager->driver($driverName);
+                if ($this->cacheTtl !== null) $builder = $builder->cache($this->cacheTtl);
+                if ($this->escalateDriver !== null) $builder = $builder->escalateTo($this->escalateDriver, $this->escalateThreshold);
+                return $builder->read($resolved, $mergedOptions);
+            }
+        }
+
+        // Cache check
+        $cacheKey = null;
+        if ($this->cacheTtl !== null) {
+            $content  = is_string($resolved) && file_exists($resolved) ? (string) file_get_contents($resolved) : '';
+            $cacheKey = hash('sha256', $content . $this->driverName . serialize($mergedOptions));
+            $cached   = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            if ($cached !== null) {
+                return OcrResult::fromArray($cached);
+            }
+        }
+
+        $result = $this->runDriver($resolved, $mergedOptions);
+
+        // Escalation
+        if ($this->escalateDriver !== null) {
+            $conf = $result->confidence();
+            if ($conf === null || $conf < $this->escalateThreshold) {
+                $attempts = [['driver' => $this->driverName, 'confidence' => $conf]];
+                try {
+                    $escalated  = $this->manager->driver($this->escalateDriver)->read($resolved, $mergedOptions);
+                    $attempts[] = ['driver' => $this->escalateDriver, 'confidence' => $escalated->confidence()];
+                    $data       = $escalated->toArray();
+                    $data['metadata'] = array_merge($data['metadata'] ?? [], ['attempts' => $attempts]);
+                    $result = OcrResult::fromArray($data);
+                } catch (\Throwable) {
+                    // Escalation failed — keep original result
+                }
+            }
+        }
+
+        // Cache store
+        if ($this->cacheTtl !== null && $cacheKey !== null) {
+            \Illuminate\Support\Facades\Cache::put($cacheKey, $result->toArray(), $this->cacheTtl);
+        }
+
+        return $result;
+    }
+
+    private function runDriver(mixed $document, array $options = []): OcrResult
+    {
         try {
             if ($this->driver instanceof CloudOcrCapable) {
-                $result = $this->driver->read($resolvedDocument, $mergedOptions);
+                $result = $this->driver->read($document, $options);
             } else {
-                // Legacy driver: wrap extract() result in OcrResult
-                $raw    = $this->driver->extract($resolvedDocument, $mergedOptions);
+                $raw    = $this->driver->extract($document, $options);
                 $result = OcrResult::fromLegacy($raw, $this->driverName);
             }
         } catch (OCRException $e) {
             if ($this->fallbackDriver !== null) {
-                return $this->runFallback($resolvedDocument, $e, $mergedOptions);
+                return $this->runFallback($document, $e, $options);
             }
             throw $e;
         } catch (\Throwable $e) {
             if ($this->fallbackDriver !== null) {
-                return $this->runFallback($resolvedDocument, $e, $mergedOptions);
+                return $this->runFallback($document, $e, $options);
             }
             throw new OCRException($e->getMessage(), (int) $e->getCode(), $e);
         }
 
-        // Attach page-range warning to metadata if applicable
-        if (isset($mergedOptions['_page_range_warning'])) {
-            $data             = $result->toArray();
-            $data['metadata']['warnings'][] = $mergedOptions['_page_range_warning'];
+        if (isset($options['_page_range_warning'])) {
+            $data                     = $result->toArray();
+            $data['metadata']['warnings'][] = $options['_page_range_warning'];
             $result = OcrResult::fromArray($data);
         }
 
         return $result;
     }
 
+    // ── Schema extraction ─────────────────────────────────────────────────
+
+    public function extract(string|array $target, array $options = []): \LaravelSmartOCR\Extraction\ExtractionResult
+    {
+        $ocrResult = $this->read($this->pendingDocument ?? null);
+        return (new \LaravelSmartOCR\Extraction\ExtractionService())->extract($ocrResult, $target, $options);
+    }
+
+    // ── Fallback ──────────────────────────────────────────────────────────
+
     private function runFallback(mixed $document, \Throwable $original, array $options = []): OcrResult
     {
-        // Scrub any potential secret from the reason string (base64-like tokens)
         $reason = preg_replace('/[A-Za-z0-9+\/]{20,}={0,2}/', '[REDACTED]', $original->getMessage());
 
         try {
-            $builder = $this->manager->driver($this->fallbackDriver);
-            $result  = $builder->read($document, $options);
+            $result = $this->manager->driver($this->fallbackDriver)->read($document, $options);
         } catch (\Throwable $fb) {
             throw new OCRException(
                 "Primary driver [{$this->driverName}] and fallback [{$this->fallbackDriver}] both failed: " . $fb->getMessage(),
@@ -175,7 +248,7 @@ class OcrDriverBuilder
             );
         }
 
-        $meta        = array_merge($result->metadata(), [
+        $meta       = array_merge($result->metadata(), [
             'fallback_used'    => true,
             'requested_driver' => $this->driverName,
             'actual_driver'    => $this->fallbackDriver,
@@ -197,10 +270,7 @@ class OcrDriverBuilder
         return $finalResult;
     }
 
-    public function extract(mixed $document, array $options = []): array
-    {
-        return $this->driver->extract($document, array_merge($this->options, $options));
-    }
+    // ── Pass-throughs ─────────────────────────────────────────────────────
 
     public function extractText(mixed $document, array $options = []): array
     {

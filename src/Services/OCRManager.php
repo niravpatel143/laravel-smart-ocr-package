@@ -10,6 +10,8 @@ use LaravelSmartOCR\Drivers\AwsTextractDriver;
 use LaravelSmartOCR\Drivers\AzureVisionDriver;
 use LaravelSmartOCR\Drivers\ClaudeVisionDriver;
 use LaravelSmartOCR\Drivers\GoogleVisionDriver;
+use LaravelSmartOCR\Drivers\MistralOcrDriver;
+use LaravelSmartOCR\Drivers\OpenAiCompatibleDriver;
 use LaravelSmartOCR\Drivers\OpenAIVisionDriver;
 use LaravelSmartOCR\Drivers\PdfTextDriver;
 use LaravelSmartOCR\Drivers\TesseractDriver;
@@ -18,7 +20,7 @@ use LaravelSmartOCR\Results\OcrResult;
 
 class OCRManager extends Manager
 {
-    protected const BUILT_IN_DRIVERS = ['claude', 'openai', 'pdf', 'tesseract', 'google', 'aws', 'azure'];
+    protected const BUILT_IN_DRIVERS = ['claude', 'openai', 'pdf', 'tesseract', 'google', 'aws', 'azure', 'mistral', 'openai_compatible'];
 
     public function getDefaultDriver(): string
     {
@@ -47,14 +49,16 @@ class OCRManager extends Manager
         }
 
         $resolvedDriver = match ($driverName) {
-            'claude'    => $this->createClaudeDriver(),
-            'openai'    => $this->createOpenAIDriver(),
-            'pdf'       => $this->createPdfDriver(),
-            'tesseract' => $this->createTesseractDriver(),
-            'google'    => $this->createGoogleDriver(),
-            'aws'       => $this->createAwsDriver(),
-            'azure'     => $this->createAzureDriver(),
-            default     => throw DriverNotAvailableException::unknown($driverName, self::BUILT_IN_DRIVERS),
+            'claude'             => $this->createClaudeDriver(),
+            'openai'             => $this->createOpenAIDriver(),
+            'pdf'                => $this->createPdfDriver(),
+            'tesseract'          => $this->createTesseractDriver(),
+            'google'             => $this->createGoogleDriver(),
+            'aws'                => $this->createAwsDriver(),
+            'azure'              => $this->createAzureDriver(),
+            'mistral'            => $this->createMistralDriver(),
+            'openai_compatible'  => $this->createOpenAiCompatibleDriver(),
+            default              => throw DriverNotAvailableException::unknown($driverName, self::BUILT_IN_DRIVERS),
         };
 
         return new OcrDriverBuilder($resolvedDriver, $driverName, $this);
@@ -113,25 +117,18 @@ class OCRManager extends Manager
         );
     }
 
+    protected function createMistralDriver(): OCRDriver
+    {
+        return new MistralOcrDriver();
+    }
+
+    protected function createOpenAiCompatibleDriver(): OCRDriver
+    {
+        return new OpenAiCompatibleDriver();
+    }
+
     // ── Fluent from() API ─────────────────────────────────────────────────
 
-    /**
-     * Start a fluent OCR pipeline from a document source.
-     *
-     * Accepts:
-     *   - A local file path string
-     *   - An Illuminate UploadedFile
-     *   - A disk-prefixed path string like "s3:invoices/doc.pdf"
-     *   - A DocumentSource instance
-     *
-     * Returns an OcrDriverBuilder with the source pre-loaded.
-     * Chain ->pages('1-3'), ->language('eng'), ->driver('google'), ->read() etc.
-     *
-     * Usage:
-     *   SmartOCR::from('/path/to/doc.pdf')->pages('1-3')->read();
-     *   SmartOCR::from($uploadedFile)->driver('google')->read();
-     *   SmartOCR::from('s3:bucket/path.pdf')->read();
-     */
     public function from(mixed $source): OcrDriverBuilder
     {
         $docSource = DocumentSource::parse($source);

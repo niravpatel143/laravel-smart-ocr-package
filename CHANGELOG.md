@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-09-25
+
+### Added
+- `SmartOCR::from()` fluent API with `DocumentSource` (path, UploadedFile, disk path, bytes)
+- Schema extraction: `#[Field]`, `#[ListOf]` attributes, `SchemaBuilder`, `RulesEngine` (free), `LlmEngine`
+- `ExtractionResult` with `field()`, `needsReview()`, `isConfident()`, `sendToReview()`
+- `FieldResult` with per-field confidence (never invented) and `FieldCitation` (page + bbox)
+- `OcrResult::toMarkdown()` and `OcrResult::chunks()` for RAG pipelines
+- `OcrResult::redact()` — PII redaction (email, phone, card, IBAN, custom regex)
+- `OcrResult::classify()` — rule-based document classification
+- `OcrResult::cost()` — cost estimate DTO
+- `SmartOCR::from()->cheapest()`, `->best()`, `->escalateTo()`, `->cache()` smart routing
+- `MistralOcrDriver` — Mistral OCR API (`mistral-ocr-latest`)
+- `OpenAiCompatibleDriver` — generic driver for Ollama, LM Studio, or any OpenAI-compatible endpoint
+- `OcrReview` model + migration for human review queue
+- `ReviewRequested` and `ReviewCompleted` events
+- `HasOcrDocuments` Eloquent trait
+- `ExtractionNeedsReview` event
+- `smart-ocr:eval` command — per-driver accuracy, confidence, cost report
+- `BudgetExceededException` — thrown when cost estimate exceeds `routing.max_cost_per_document`
+- `OcrRouter` — driver selection by cost or quality order
+- Pricing config (`smart-ocr.pricing.*`) — all prices configurable, never hardcoded
+
+### Changed
+- `SmartOCR::fake()` now supports `sequence()`, `assertReadWith()`, `assertUsedDriver()`, `preventStrayRequests()`
+- `OcrDriverBuilder::async()` triggers `E_USER_DEPRECATED` (was silent no-op)
+- MIME type detection now uses `finfo` instead of file extension (fixes UploadedFile handling)
+- `TesseractDriver` no longer deletes files it didn't create
+- Hardcoded confidence values (`0.95`, `1.0`, `0.0`) removed — all confidence is now real or `null`
+- Retry logic limited to HTTP 429, 5xx, and network errors (was retrying 4xx)
+
+### Deprecated
+- `OcrDriverBuilder::async()` — remove from your code
+- `DocumentParser::parse()` option `ai_cleanup` → use `use_ai_cleanup`
+- `DocumentParser::parse()` option `detect_template` → use `auto_detect_template`
+
 ## [2.1.0] - 2026-09-23
 
 ### Added

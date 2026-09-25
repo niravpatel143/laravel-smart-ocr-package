@@ -66,6 +66,17 @@ class OcrResult
     public function errors(): array       { return $this->data['errors'] ?? []; }
     public function schemaVersion(): int  { return (int)($this->data['schema_version'] ?? 1); }
 
+    public function toMarkdown(): string
+    {
+        return (new \LaravelSmartOCR\Output\MarkdownRenderer())->render($this);
+    }
+
+    /** @return \LaravelSmartOCR\Output\Chunk[] */
+    public function chunks(int $maxTokens = 500, int $overlap = 50): array
+    {
+        return (new \LaravelSmartOCR\Output\Chunker())->chunk($this->toMarkdown(), $maxTokens, $overlap);
+    }
+
     public function toArray(): array
     {
         return [

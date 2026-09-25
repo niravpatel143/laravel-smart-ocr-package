@@ -26,6 +26,7 @@ class OcrResult
             'raw'            => [],
             'errors'         => [],
             'schema_version' => 1,
+            'cost'           => null,
         ], $data));
     }
 
@@ -65,6 +66,19 @@ class OcrResult
     public function raw(): array          { return $this->data['raw'] ?? []; }
     public function errors(): array       { return $this->data['errors'] ?? []; }
     public function schemaVersion(): int  { return (int)($this->data['schema_version'] ?? 1); }
+
+    public function cost(): ?\LaravelSmartOCR\Results\CostEstimate
+    {
+        $c = $this->data['cost'] ?? null;
+        if ($c === null) return null;
+        return new \LaravelSmartOCR\Results\CostEstimate(
+            amount: (string)($c['amount'] ?? '0'),
+            currency: (string)($c['currency'] ?? 'USD'),
+            pages: (int)($c['pages'] ?? 0),
+            tokens: (int)($c['tokens'] ?? 0),
+            estimated: (bool)($c['estimated'] ?? true),
+        );
+    }
 
     public function toMarkdown(): string
     {

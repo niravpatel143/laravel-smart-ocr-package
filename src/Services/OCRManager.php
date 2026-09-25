@@ -9,6 +9,8 @@ use LaravelSmartOCR\Drivers\AwsTextractDriver;
 use LaravelSmartOCR\Drivers\AzureVisionDriver;
 use LaravelSmartOCR\Drivers\ClaudeVisionDriver;
 use LaravelSmartOCR\Drivers\GoogleVisionDriver;
+use LaravelSmartOCR\Drivers\MistralOcrDriver;
+use LaravelSmartOCR\Drivers\OpenAiCompatibleDriver;
 use LaravelSmartOCR\Drivers\OpenAIVisionDriver;
 use LaravelSmartOCR\Drivers\PdfTextDriver;
 use LaravelSmartOCR\Drivers\TesseractDriver;
@@ -17,7 +19,7 @@ use LaravelSmartOCR\Results\OcrResult;
 
 class OCRManager extends Manager
 {
-    protected const BUILT_IN_DRIVERS = ['claude', 'openai', 'pdf', 'tesseract', 'google', 'aws', 'azure'];
+    protected const BUILT_IN_DRIVERS = ['claude', 'openai', 'pdf', 'tesseract', 'google', 'aws', 'azure', 'mistral', 'openai_compatible'];
 
     public function getDefaultDriver(): string
     {
@@ -46,14 +48,16 @@ class OCRManager extends Manager
         }
 
         $resolvedDriver = match ($driverName) {
-            'claude'    => $this->createClaudeDriver(),
-            'openai'    => $this->createOpenAIDriver(),
-            'pdf'       => $this->createPdfDriver(),
-            'tesseract' => $this->createTesseractDriver(),
-            'google'    => $this->createGoogleDriver(),
-            'aws'       => $this->createAwsDriver(),
-            'azure'     => $this->createAzureDriver(),
-            default     => throw DriverNotAvailableException::unknown($driverName, self::BUILT_IN_DRIVERS),
+            'claude'             => $this->createClaudeDriver(),
+            'openai'             => $this->createOpenAIDriver(),
+            'pdf'                => $this->createPdfDriver(),
+            'tesseract'          => $this->createTesseractDriver(),
+            'google'             => $this->createGoogleDriver(),
+            'aws'                => $this->createAwsDriver(),
+            'azure'              => $this->createAzureDriver(),
+            'mistral'            => $this->createMistralDriver(),
+            'openai_compatible'  => $this->createOpenAiCompatibleDriver(),
+            default              => throw DriverNotAvailableException::unknown($driverName, self::BUILT_IN_DRIVERS),
         };
 
         return new OcrDriverBuilder($resolvedDriver, $driverName, $this);
@@ -110,6 +114,16 @@ class OCRManager extends Manager
         return new AzureVisionDriver(
             $this->config->get('smart-ocr.drivers.azure', [])
         );
+    }
+
+    protected function createMistralDriver(): OCRDriver
+    {
+        return new MistralOcrDriver();
+    }
+
+    protected function createOpenAiCompatibleDriver(): OCRDriver
+    {
+        return new OpenAiCompatibleDriver();
     }
 
     // ── Convenience pass-throughs ──────────────────────────────────────────

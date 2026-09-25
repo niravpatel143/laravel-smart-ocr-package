@@ -66,6 +66,44 @@ class OcrResult
     public function errors(): array       { return $this->data['errors'] ?? []; }
     public function schemaVersion(): int  { return (int)($this->data['schema_version'] ?? 1); }
 
+    /** Return the cost estimate DTO if set, or null. */
+    public function cost(): ?\LaravelSmartOCR\Data\CostEstimate
+    {
+        $cost = $this->data['cost'] ?? null;
+        if ($cost === null) {
+            return null;
+        }
+        if ($cost instanceof \LaravelSmartOCR\Data\CostEstimate) {
+            return $cost;
+        }
+        if (is_array($cost)) {
+            return \LaravelSmartOCR\Data\CostEstimate::fromArray($cost);
+        }
+        return null;
+    }
+
+    /**
+     * Return a new OcrResult with PII redacted from the text field.
+     * @param string[] $types  e.g. ['email', 'phone', 'card']
+     * @param string[] $custom Additional regex patterns
+     */
+    public function redact(array $types = [], array $custom = []): self
+    {
+        $redactor = new \LaravelSmartOCR\Services\PiiRedactor();
+        $data     = $this->data;
+        $data['text'] = $redactor->redact($data['text'] ?? '', $types, $custom);
+        return new self($data);
+    }
+
+    /**
+     * Classify this document into invoice/receipt/contract/id/other.
+     * @param string[] $types Limit to specific types. Empty = all types.
+     */
+    public function classify(array $types = []): array
+    {
+        return (new \LaravelSmartOCR\Services\DocumentClassifier())->classify($this, $types);
+    }
+
     public function toArray(): array
     {
         return [

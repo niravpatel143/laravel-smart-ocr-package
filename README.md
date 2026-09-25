@@ -43,6 +43,10 @@ https://github.com/user-attachments/assets/cf248862-b7cb-4504-8969-4e3745fd0e7c
 - [Templates](#templates)
 - [AI Cleanup](#ai-cleanup)
 - [Environment Variables Reference](#environment-variables-reference)
+- [Privacy](#privacy)
+- [Choosing a Driver](#choosing-a-driver)
+- [Testing](#testing)
+- [Health Check](#health-check)
 
 ---
 
@@ -58,8 +62,8 @@ use LaravelSmartOCR\Facades\SmartOCR;
 // Default driver (set SMART_OCR_DRIVER in .env)
 $result = SmartOCR::driver('google')->read($file);
 
-echo $result->text();        // full extracted text
-echo $result->confidence();  // float|null — null when provider does not expose a real score
+echo $result->text();               // full extracted text
+echo $result->confidence() ?? 'n/a'; // float|null — null when provider does not expose a real score
 $result->tables();           // normalized tables
 $result->fields();           // key-value form fields
 $result->toArray();          // complete structured data
@@ -80,9 +84,9 @@ SMART_OCR_DRIVER=google   # or aws, azure, tesseract, claude, openai, pdf
 | Image OCR | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | Scanned PDF | ✓ | ✓ | ✓ | ✓ | — | — | — |
 | Digital PDF (text layer) | — | — | — | — | — | — | ✓ |
-| Multi-page | — | ✓ (5 pages) | ✓ | ✓ | — | — | ✓ |
-| Confidence scores | — | ✓ per word | ✓ per word | ✓ per word | — | — | — |
-| Bounding boxes | — | ✓ | ✓ | ✓ | — | — | — |
+| Multi-page | — | ✓ (5 pages sync) | ✓ (async+S3) | ✓ | — | — | ✓ |
+| Confidence scores | `float\|null` (TSV) | `float` | `float` | `float` | `null` | `null` | `null` |
+| Bounding boxes | ✓ (word-level) | ✓ | ✓ | ✓ (Read 3.2 GA) | — | — | — |
 | Table extraction | basic | — | ✓ structured | — | prompt-based | prompt-based | — |
 | Form key-value | — | — | ✓ | — | — | — | — |
 | Languages | 100+ | 100+ | ~12 | 100+ | auto | auto | from PDF |
@@ -464,11 +468,6 @@ $result = SmartOCR::driver('azure')
     ->fallback('tesseract')
     ->read($file);
 
-// Async mode flag (useful for future async drivers)
-$result = SmartOCR::driver('aws')
-    ->async()
-    ->read($file);
-
 // Chain with fallback
 $result = SmartOCR::driver('google')
     ->language('en')
@@ -671,6 +670,67 @@ SMART_OCR_CLAUDE_MODEL=claude-opus-4-7
 OPENAI_API_KEY=
 SMART_OCR_OPENAI_MODEL=gpt-4o
 ```
+
+---
+
+## Privacy
+
+Cloud and LLM drivers (Google, AWS, Azure, Claude, OpenAI) send your document contents to third-party APIs. For sensitive documents, use the **Tesseract** or **PDF** drivers, which process everything locally.
+
+Configure which providers are allowed:
+
+```php
+// config/smart-ocr.php
+'privacy' => [
+    'allow_external_ai' => false, // block cloud/LLM drivers
+],
+```
+
+---
+
+## Choosing a Driver
+
+| Use case | Recommended driver |
+|---|---|
+| Forms, tables, structured data | `aws` (Textract) |
+| Multilingual printed text | `google` or `azure` |
+| Offline / private documents | `tesseract` or `pdf` |
+| Messy layouts, handwriting | `claude` or `openai`* |
+| PDF with embedded text | `pdf` |
+
+*LLM drivers can silently correct, reorder, or invent text. Do not rely on them for legally-required verbatim accuracy without human review.
+
+---
+
+## Testing
+
+Use `SmartOCR::fake()` to swap in a fake driver during tests:
+
+```php
+use LaravelSmartOCR\Testing\SmartOCRFake;
+use LaravelSmartOCR\Results\OcrResult;
+
+$fake = SmartOCR::fake();
+$fake->addResult(OcrResult::fromArray([
+    'text'     => 'Invoice #1234',
+    'provider' => 'google',
+]));
+
+$result = SmartOCR::driver('google')->read('/path/to/invoice.pdf');
+$this->assertEquals('Invoice #1234', $result->text());
+
+$fake->assertRead('/path/to/invoice.pdf');
+```
+
+---
+
+## Health Check
+
+```bash
+php artisan smart-ocr:doctor
+```
+
+Reports: Tesseract binary and version, installed language packs, Ghostscript, and cloud driver credential status.
 
 ---
 

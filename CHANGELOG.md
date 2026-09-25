@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-09-23
+
+### Added
+- `OcrResult` unified value object returned by all drivers
+- Google Cloud Vision, AWS Textract, Azure Computer Vision (Read 3.2 GA) drivers
+- `SmartOCR::fake()` testing helper with `assertRead()` / `assertNothingRead()`
+- `OcrFallbackUsed` event with metadata (requested driver, actual driver, reason)
+- `smart-ocr:doctor` artisan health-check command
+- `BoundingBoxNormalizer` — consistent box format across all drivers
+- `Retryable` trait — exponential backoff with `RateLimitException` support
+- `schema_version => 1` in `OcrResult::toArray()`
+
+### Changed
+- `OcrResult::confidence()` returns `null` for tesseract, claude, openai, pdf (these providers do not expose a real confidence score)
+- AWS Textract sync/async decision now checks page count AND file size (multi-page PDFs always use async)
+- Google API key sent via `x-goog-api-key` header instead of query string
+- Azure driver uses Read 3.2 GA endpoint (was Image Analysis 4.0 preview)
+- `ProcessOcrJob` no longer retries on `AuthenticationException`, `ConfigurationException`, or `UnsupportedDocumentException`
+- `async()` on `OcrDriverBuilder` is deprecated (was always a no-op)
+
+### Removed
+- `composer.lock` (libraries should not commit lock files)
+- `minimum-stability` and `prefer-stable` from `composer.json` (root-only settings)
+- Dev/test artefacts (`package-evaluation.md`, `advanced-invoice-extractor.php`, temp files)
+
 ## [2.0.1] - 2026-09-25
 
 ### Fixed

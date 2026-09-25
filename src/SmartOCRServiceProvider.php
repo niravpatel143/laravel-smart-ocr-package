@@ -13,6 +13,7 @@ use LaravelSmartOCR\Services\RemoteDocumentResolver;
 use LaravelSmartOCR\Services\TemporaryDocumentManager;
 use LaravelSmartOCR\Console\Commands\CreateTemplateCommand;
 use LaravelSmartOCR\Console\Commands\DoctorCommand;
+use LaravelSmartOCR\Console\Commands\EvalCommand;
 use LaravelSmartOCR\Console\Commands\ProcessDocumentCommand;
 
 class SmartOCRServiceProvider extends ServiceProvider
@@ -81,6 +82,7 @@ class SmartOCRServiceProvider extends ServiceProvider
             $this->commands([
                 CreateTemplateCommand::class,
                 DoctorCommand::class,
+                EvalCommand::class,
                 ProcessDocumentCommand::class,
             ]);
         }

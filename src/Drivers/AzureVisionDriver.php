@@ -32,7 +32,7 @@ class AzureVisionDriver implements OCRDriver, CloudOcrCapable
     {
         $this->endpoint   = rtrim($config['endpoint'] ?? '', '/');
         $this->key        = $config['key'] ?? '';
-        $this->apiVersion = $config['api_version'] ?? '2023-02-01-preview';
+        $this->apiVersion = $config['api_version'] ?? '3.2';
         $this->timeout    = (int)($config['timeout'] ?? 60);
         $this->verifySsl  = (bool)($config['ssl_verify'] ?? true);
 
@@ -114,7 +114,8 @@ class AzureVisionDriver implements OCRDriver, CloudOcrCapable
 
     private function submitReadRequest(string $filePath): string
     {
-        $url     = "{$this->endpoint}/computervision/imageanalysis:analyze?api-version={$this->apiVersion}&features=read";
+        // Use the Read 3.2 GA API — supports images and multi-page PDFs
+        $url     = "{$this->endpoint}/vision/v3.2/read/analyze";
         $content = file_get_contents($filePath);
         $mime    = $this->detectMimeType($filePath);
 
@@ -132,10 +133,10 @@ class AzureVisionDriver implements OCRDriver, CloudOcrCapable
             CURLOPT_HEADER         => true,
         ]);
 
-        $response    = curl_exec($ch);
-        $httpCode    = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $headerSize  = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-        $curlErr     = curl_error($ch);
+        $response   = curl_exec($ch);
+        $httpCode   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        $curlErr    = curl_error($ch);
         curl_close($ch);
 
         if ($curlErr) {
@@ -147,36 +148,19 @@ class AzureVisionDriver implements OCRDriver, CloudOcrCapable
         $decoded         = json_decode($body, true) ?? [];
 
         if ($httpCode === 202) {
-            // Async operation: get operation URL from header
+            // Async — get Operation-Location for polling
             preg_match('/Operation-Location:\s*(\S+)/i', $responseHeaders, $m);
-            return $m[1] ?? '';
-        }
-
-        if ($httpCode === 200) {
-            // Synchronous response (newer API versions)
-            return $this->buildFakeOperationUrl($decoded);
+            if (empty($m[1])) {
+                throw ProviderException::fromProviderError('azure', 'No Operation-Location header in 202 response');
+            }
+            return $m[1];
         }
 
         $this->handleHttpError($httpCode, $decoded);
     }
 
-    private function buildFakeOperationUrl(array $syncResponse): string
-    {
-        // Store inline response for immediate retrieval
-        $key                   = 'azure_sync_' . uniqid();
-        $this->syncCache[$key] = $syncResponse;
-        return '__sync__:' . $key;
-    }
-
-    private array $syncCache = [];
-
     private function pollResult(string $operationUrl): array
     {
-        if (str_starts_with($operationUrl, '__sync__:')) {
-            $key = substr($operationUrl, 9);
-            return $this->syncCache[$key] ?? [];
-        }
-
         if (empty($operationUrl)) {
             throw ProviderException::fromProviderError('azure', 'No operation URL returned');
         }
@@ -202,7 +186,7 @@ class AzureVisionDriver implements OCRDriver, CloudOcrCapable
                 return $decoded;
             }
             if ($status === 'failed') {
-                throw ProviderException::fromProviderError('azure', $decoded['error']['message'] ?? 'Operation failed');
+                throw ProviderException::fromProviderError('azure', $decoded['error']['message'] ?? 'Read operation failed');
             }
         }
 

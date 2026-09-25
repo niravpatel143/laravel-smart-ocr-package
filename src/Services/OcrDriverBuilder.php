@@ -4,6 +4,7 @@ namespace LaravelSmartOCR\Services;
 
 use LaravelSmartOCR\Contracts\OCRDriver;
 use LaravelSmartOCR\Drivers\CloudOcrCapable;
+use LaravelSmartOCR\Events\OcrFallbackUsed;
 use LaravelSmartOCR\Exceptions\OCRException;
 use LaravelSmartOCR\Results\OcrResult;
 
@@ -11,7 +12,6 @@ class OcrDriverBuilder
 {
     private array $options = [];
     private ?string $fallbackDriver = null;
-    private bool $asyncMode = false;
 
     public function __construct(
         private readonly OCRDriver $driver,
@@ -25,9 +25,16 @@ class OcrDriverBuilder
         return $this;
     }
 
+    /**
+     * @deprecated async() is a no-op — async processing is handled automatically by each driver.
+     *             This method will be removed in v3.0.
+     */
     public function async(): static
     {
-        $this->asyncMode = true;
+        trigger_error(
+            'OcrDriverBuilder::async() is deprecated and has no effect. Async processing is handled automatically. It will be removed in v3.0.',
+            E_USER_DEPRECATED
+        );
         return $this;
     }
 
@@ -48,17 +55,52 @@ class OcrDriverBuilder
             return OcrResult::fromLegacy($raw, $this->driverName);
         } catch (OCRException $e) {
             if ($this->fallbackDriver !== null) {
-                $raw = $this->manager->driver($this->fallbackDriver)->extract($document, $this->options);
-                return OcrResult::fromLegacy($raw, $this->fallbackDriver);
+                return $this->runFallback($document, $e);
             }
             throw $e;
         } catch (\Throwable $e) {
             if ($this->fallbackDriver !== null) {
-                $raw = $this->manager->driver($this->fallbackDriver)->extract($document, $this->options);
-                return OcrResult::fromLegacy($raw, $this->fallbackDriver);
+                return $this->runFallback($document, $e);
             }
             throw new OCRException($e->getMessage(), (int) $e->getCode(), $e);
         }
+    }
+
+    private function runFallback(mixed $document, \Throwable $original): OcrResult
+    {
+        // Scrub any potential secret from the reason string (base64-like tokens)
+        $reason = preg_replace('/[A-Za-z0-9+\/]{20,}={0,2}/', '[REDACTED]', $original->getMessage());
+
+        try {
+            $builder = $this->manager->driver($this->fallbackDriver);
+            $result  = $builder->read($document);
+        } catch (\Throwable $fb) {
+            throw new OCRException(
+                "Primary driver [{$this->driverName}] and fallback [{$this->fallbackDriver}] both failed: " . $fb->getMessage(),
+                0, $original
+            );
+        }
+
+        $meta        = array_merge($result->metadata(), [
+            'fallback_used'    => true,
+            'requested_driver' => $this->driverName,
+            'actual_driver'    => $this->fallbackDriver,
+            'fallback_reason'  => get_class($original) . ': ' . $reason,
+        ]);
+        $data             = $result->toArray();
+        $data['metadata'] = $meta;
+        $finalResult      = OcrResult::fromArray($data);
+
+        if (function_exists('event')) {
+            event(new OcrFallbackUsed(
+                $finalResult,
+                $this->driverName,
+                $this->fallbackDriver,
+                get_class($original) . ': ' . $reason
+            ));
+        }
+
+        return $finalResult;
     }
 
     public function extract(mixed $document, array $options = []): array

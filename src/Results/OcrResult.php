@@ -12,19 +12,20 @@ class OcrResult
     public static function fromArray(array $data): self
     {
         return new self(array_merge([
-            'success'    => true,
-            'provider'   => 'unknown',
-            'text'       => '',
-            'confidence' => null,
-            'pages'      => [],
-            'lines'      => [],
-            'words'      => [],
-            'blocks'     => [],
-            'tables'     => [],
-            'fields'     => [],
-            'metadata'   => [],
-            'raw'        => [],
-            'errors'     => [],
+            'success'        => true,
+            'provider'       => 'unknown',
+            'text'           => '',
+            'confidence'     => null,
+            'pages'          => [],
+            'lines'          => [],
+            'words'          => [],
+            'blocks'         => [],
+            'tables'         => [],
+            'fields'         => [],
+            'metadata'       => [],
+            'raw'            => [],
+            'errors'         => [],
+            'schema_version' => 1,
         ], $data));
     }
 
@@ -63,23 +64,25 @@ class OcrResult
     public function metadata(): array     { return $this->data['metadata'] ?? []; }
     public function raw(): array          { return $this->data['raw'] ?? []; }
     public function errors(): array       { return $this->data['errors'] ?? []; }
+    public function schemaVersion(): int  { return (int)($this->data['schema_version'] ?? 1); }
 
     public function toArray(): array
     {
         return [
-            'success'    => $this->isSuccessful(),
-            'provider'   => $this->provider(),
-            'text'       => $this->text(),
-            'confidence' => $this->confidence(),
-            'pages'      => $this->pages(),
-            'lines'      => $this->lines(),
-            'words'      => $this->words(),
-            'blocks'     => $this->blocks(),
-            'tables'     => $this->tables(),
-            'fields'     => $this->fields(),
-            'metadata'   => $this->metadata(),
-            'raw'        => $this->raw(),
-            'errors'     => $this->errors(),
+            'success'        => $this->isSuccessful(),
+            'provider'       => $this->provider(),
+            'text'           => $this->text(),
+            'confidence'     => $this->confidence(),
+            'pages'          => $this->pages(),
+            'lines'          => $this->lines(),
+            'words'          => $this->words(),
+            'blocks'         => $this->blocks(),
+            'tables'         => $this->tables(),
+            'fields'         => $this->fields(),
+            'metadata'       => $this->metadata(),
+            'raw'            => $this->raw(),
+            'errors'         => $this->errors(),
+            'schema_version' => $this->schemaVersion(),
         ];
     }
 }

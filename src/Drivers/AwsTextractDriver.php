@@ -51,8 +51,13 @@ class AwsTextractDriver implements OCRDriver, CloudOcrCapable
             $filePath = $this->resolveFilePath($document);
             $this->assertSupportedFormat($filePath);
 
-            $fileSize = filesize($filePath);
-            if ($fileSize > self::MAX_SYNC_SIZE) {
+            $fileSize  = filesize($filePath);
+            $isPdf     = strtolower(pathinfo($filePath, PATHINFO_EXTENSION)) === 'pdf';
+            $pageCount = $isPdf ? $this->getPdfPageCount($filePath) : 1;
+
+            // AWS Textract sync accepts single-page documents only for PDFs
+            // Multi-page PDFs or files over 5 MB must use the async (S3) flow
+            if ($fileSize > self::MAX_SYNC_SIZE || ($isPdf && $pageCount > 1)) {
                 return $this->processAsync($filePath, $options);
             }
             return $this->processSync($filePath, $options);
@@ -133,7 +138,7 @@ class AwsTextractDriver implements OCRDriver, CloudOcrCapable
     private function processAsync(string $filePath, array $options): OcrResult
     {
         if (empty($this->s3Bucket)) {
-            throw ConfigurationException::missingKey('aws', 's3.bucket (required for files > 5 MB)');
+            throw ConfigurationException::missingKey('aws', 's3.bucket (required for multi-page PDFs and files larger than 5 MB)');
         }
 
         // Upload to S3 first
@@ -529,5 +534,17 @@ class AwsTextractDriver implements OCRDriver, CloudOcrCapable
         }
         $total = array_sum(array_column($items, 'confidence'));
         return round($total / count($items), 4);
+    }
+
+    private function getPdfPageCount(string $filePath): int
+    {
+        try {
+            $content = file_get_contents($filePath);
+            preg_match_all('/\/Type\s*\/Page\b/', $content, $matches);
+            $count = count($matches[0]);
+            return $count > 0 ? $count : 1;
+        } catch (\Throwable) {
+            return 1;
+        }
     }
 }

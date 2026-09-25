@@ -293,9 +293,12 @@ class AzureVisionDriver implements OCRDriver, CloudOcrCapable
 
     private function assertSupportedFormat(string $filePath): void
     {
-        $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-        if (!in_array($ext, self::SUPPORTED_FORMATS, true)) {
-            throw UnsupportedDocumentException::forFormat('azure', $ext);
+        $mime = $this->detectMimeType($filePath);
+        $supportedMimes = [
+            'image/jpeg', 'image/png', 'image/bmp', 'image/tiff', 'application/pdf',
+        ];
+        if (!in_array($mime, $supportedMimes, true)) {
+            throw UnsupportedDocumentException::forFormat('azure', $mime);
         }
     }
 

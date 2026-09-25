@@ -52,7 +52,8 @@ class AwsTextractDriver implements OCRDriver, CloudOcrCapable
             $this->assertSupportedFormat($filePath);
 
             $fileSize  = filesize($filePath);
-            $isPdf     = strtolower(pathinfo($filePath, PATHINFO_EXTENSION)) === 'pdf';
+            $mime      = $this->detectMimeType($filePath);
+            $isPdf     = $mime === 'application/pdf';
             $pageCount = $isPdf ? $this->getPdfPageCount($filePath) : 1;
 
             // AWS Textract sync accepts single-page documents only for PDFs
@@ -121,8 +122,8 @@ class AwsTextractDriver implements OCRDriver, CloudOcrCapable
 
     private function processSync(string $filePath, array $options): OcrResult
     {
-        $ext      = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-        $hasTable = $ext !== 'tiff';
+        $mime     = $this->detectMimeType($filePath);
+        $hasTable = $mime !== 'image/tiff';
         $features = $hasTable ? ['TABLES', 'FORMS'] : [];
         $action   = empty($features) ? 'DetectDocumentText' : 'AnalyzeDocument';
 
@@ -521,10 +522,19 @@ class AwsTextractDriver implements OCRDriver, CloudOcrCapable
 
     private function assertSupportedFormat(string $filePath): void
     {
-        $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-        if (!in_array($ext, self::SUPPORTED_FORMATS, true)) {
-            throw UnsupportedDocumentException::forFormat('aws', $ext);
+        $mime = $this->detectMimeType($filePath);
+        $supportedMimes = [
+            'image/jpeg', 'image/png', 'application/pdf', 'image/tiff',
+        ];
+        if (!in_array($mime, $supportedMimes, true)) {
+            throw UnsupportedDocumentException::forFormat('aws', $mime);
         }
+    }
+
+    private function detectMimeType(string $filePath): string
+    {
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        return $finfo->file($filePath) ?: 'application/octet-stream';
     }
 
     private function averageConfidence(array $items): float

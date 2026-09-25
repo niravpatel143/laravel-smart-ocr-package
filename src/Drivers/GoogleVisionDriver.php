@@ -50,10 +50,9 @@ class GoogleVisionDriver implements OCRDriver, CloudOcrCapable
             $this->assertSupportedFormat($filePath);
             $this->assertFileSize($filePath);
 
-            $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-            $mimeType  = $this->detectMimeType($filePath);
+            $mimeType = $this->detectMimeType($filePath);
 
-            if ($extension === 'pdf') {
+            if ($mimeType === 'application/pdf') {
                 return $this->processPdf($filePath, $options);
             }
             return $this->processImage($filePath, $mimeType, $options);
@@ -200,7 +199,7 @@ class GoogleVisionDriver implements OCRDriver, CloudOcrCapable
                     fn($v) => ['x' => $v['x'] ?? 0, 'y' => $v['y'] ?? 0],
                     $ann['boundingPoly']['vertices'] ?? []
                 ));
-                $lineData    = ['text' => $ann['description'] ?? '', 'confidence' => 0.95, 'bounding_box' => $lineBox];
+                $lineData    = ['text' => $ann['description'] ?? '', 'confidence' => null, 'bounding_box' => $lineBox];
                 $lines[]     = $lineData;
                 $pageLines[] = $lineData;
             }
@@ -214,7 +213,7 @@ class GoogleVisionDriver implements OCRDriver, CloudOcrCapable
             ];
         }
 
-        $confidence = $this->averageConfidence($words) ?: 0.95;
+        $confidence = $this->averageConfidence($words) ?: null;
 
         return OcrResult::fromArray([
             'success'    => true,
@@ -256,9 +255,9 @@ class GoogleVisionDriver implements OCRDriver, CloudOcrCapable
                         foreach ($para['words'] ?? [] as $word) {
                             $wordText   = implode('', array_map(fn($s) => $s['text'] ?? '', $word['symbols'] ?? []));
                             $lineText  .= $wordText . ' ';
-                            $allWords[] = ['text' => $wordText, 'confidence' => $word['confidence'] ?? 0.95, 'bounding_box' => BoundingBoxNormalizer::empty()];
+                            $allWords[] = ['text' => $wordText, 'confidence' => $word['confidence'] ?? null, 'bounding_box' => BoundingBoxNormalizer::empty()];
                         }
-                        $lineData    = ['text' => trim($lineText), 'confidence' => 0.95, 'bounding_box' => BoundingBoxNormalizer::empty()];
+                        $lineData    = ['text' => trim($lineText), 'confidence' => null, 'bounding_box' => BoundingBoxNormalizer::empty()];
                         $pageLines[] = $lineData;
                         $allLines[]  = $lineData;
                     }
@@ -266,18 +265,20 @@ class GoogleVisionDriver implements OCRDriver, CloudOcrCapable
                 $pages[] = [
                     'page'       => count($pages) + 1,
                     'text'       => $pageText,
-                    'confidence' => 0.95,
+                    'confidence' => $this->averageConfidence($pageLines) ?: null,
                     'blocks'     => [],
                     'lines'      => $pageLines,
                 ];
             }
         }
 
+        $pdfConfidence = $this->averageConfidence($allWords) ?: $this->averageConfidence($allLines) ?: null;
+
         return OcrResult::fromArray([
             'success'    => true,
             'provider'   => 'google',
             'text'       => trim($allText),
-            'confidence' => 0.95,
+            'confidence' => $pdfConfidence,
             'pages'      => $pages,
             'lines'      => $allLines,
             'words'      => $allWords,
@@ -380,9 +381,12 @@ class GoogleVisionDriver implements OCRDriver, CloudOcrCapable
 
     private function assertSupportedFormat(string $filePath): void
     {
-        $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
-        if (!in_array($ext, self::SUPPORTED_FORMATS, true)) {
-            throw UnsupportedDocumentException::forFormat('google', $ext);
+        $mime = $this->detectMimeType($filePath);
+        $supportedMimes = [
+            'image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/webp', 'image/tiff', 'application/pdf',
+        ];
+        if (!in_array($mime, $supportedMimes, true)) {
+            throw UnsupportedDocumentException::forFormat('google', $mime);
         }
     }
 

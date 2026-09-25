@@ -5,6 +5,7 @@ namespace LaravelSmartOCR\Services;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Manager;
 use LaravelSmartOCR\Contracts\OCRDriver;
+use LaravelSmartOCR\Data\DocumentSource;
 use LaravelSmartOCR\Drivers\AwsTextractDriver;
 use LaravelSmartOCR\Drivers\AzureVisionDriver;
 use LaravelSmartOCR\Drivers\ClaudeVisionDriver;
@@ -110,6 +111,31 @@ class OCRManager extends Manager
         return new AzureVisionDriver(
             $this->config->get('smart-ocr.drivers.azure', [])
         );
+    }
+
+    // ── Fluent from() API ─────────────────────────────────────────────────
+
+    /**
+     * Start a fluent OCR pipeline from a document source.
+     *
+     * Accepts:
+     *   - A local file path string
+     *   - An Illuminate UploadedFile
+     *   - A disk-prefixed path string like "s3:invoices/doc.pdf"
+     *   - A DocumentSource instance
+     *
+     * Returns an OcrDriverBuilder with the source pre-loaded.
+     * Chain ->pages('1-3'), ->language('eng'), ->driver('google'), ->read() etc.
+     *
+     * Usage:
+     *   SmartOCR::from('/path/to/doc.pdf')->pages('1-3')->read();
+     *   SmartOCR::from($uploadedFile)->driver('google')->read();
+     *   SmartOCR::from('s3:bucket/path.pdf')->read();
+     */
+    public function from(mixed $source): OcrDriverBuilder
+    {
+        $docSource = DocumentSource::parse($source);
+        return $this->driver($this->getDefaultDriver())->withSource($docSource);
     }
 
     // ── Convenience pass-throughs ──────────────────────────────────────────

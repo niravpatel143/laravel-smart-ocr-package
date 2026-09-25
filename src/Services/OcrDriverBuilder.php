@@ -120,9 +120,9 @@ class OcrDriverBuilder
             $driverName = $ordered[0] ?? $this->driverName;
             if ($driverName !== $this->driverName) {
                 $builder = $this->manager->driver($driverName);
-                $builder->cacheTtl = $this->cacheTtl;
-                $builder->escalateDriver = $this->escalateDriver;
-                $builder->escalateThreshold = $this->escalateThreshold;
+                // Transfer routing settings to the selected builder
+                if ($this->cacheTtl !== null) $builder = $builder->cache($this->cacheTtl);
+                if ($this->escalateDriver !== null) $builder = $builder->escalateTo($this->escalateDriver, $this->escalateThreshold);
                 return $builder->read($document);
             }
         }

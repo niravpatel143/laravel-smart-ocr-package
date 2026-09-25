@@ -352,6 +352,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Smart Routing
+    |--------------------------------------------------------------------------
+    |
+    | quality_order: driver names sorted best-to-worst accuracy.
+    | max_cost_per_document: refuse to run a driver if its estimated cost
+    |   exceeds this value (in USD). 0 = no limit.
+    |
+    */
+    'routing' => [
+        'quality_order'         => ['aws','google','azure','mistral','claude','openai','openai_compatible','tesseract','pdf'],
+        'max_cost_per_document' => env('SMART_OCR_MAX_COST', '0'),   // 0 = no limit
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Schema Extraction
     |--------------------------------------------------------------------------
     |

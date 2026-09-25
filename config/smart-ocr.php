@@ -317,4 +317,18 @@ return [
         'max_requests' => 60,
         'per_minutes' => 1,
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Schema Extraction
+    |--------------------------------------------------------------------------
+    |
+    | Controls the default engine used by ExtractionService.
+    | 'rules' — free regex/heuristic engine (no API key required)
+    | 'llm'   — OpenAI-compatible LLM endpoint (requires api_key)
+    |
+    */
+    'extraction' => [
+        'engine' => env('SMART_OCR_EXTRACTION_ENGINE', 'rules'),
+    ],
 ];

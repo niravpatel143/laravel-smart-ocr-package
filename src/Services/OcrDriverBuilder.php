@@ -12,12 +12,24 @@ class OcrDriverBuilder
 {
     private array $options = [];
     private ?string $fallbackDriver = null;
+    private ?string $routingMode = null;
+    private ?string $escalateDriver = null;
+    private float $escalateThreshold = 0.80;
+    private int|\DateTimeInterface|\DateInterval|null $cacheTtl = null;
+    private mixed $pendingDocument = null;
 
     public function __construct(
         private readonly OCRDriver $driver,
         private readonly string $driverName,
         private readonly OCRManager $manager,
     ) {}
+
+    /** Store document for fluent chaining: SmartOCR::driver('x')->from($file)->extract($schema) */
+    public function from(mixed $document): static
+    {
+        $this->pendingDocument = $document;
+        return $this;
+    }
 
     public function language(string $language): static
     {
@@ -44,7 +56,118 @@ class OcrDriverBuilder
         return $this;
     }
 
+    /** Use the cheapest available configured driver automatically. */
+    public function cheapest(): self
+    {
+        $clone = clone $this;
+        $clone->routingMode = 'cheapest';
+        return $clone;
+    }
+
+    /** Use the highest-quality available configured driver automatically. */
+    public function best(): self
+    {
+        $clone = clone $this;
+        $clone->routingMode = 'best';
+        return $clone;
+    }
+
+    /**
+     * If primary driver confidence is below $threshold, automatically retry with $driver.
+     */
+    public function escalateTo(string $driver, float $whenConfidenceBelow = 0.80): self
+    {
+        $clone = clone $this;
+        $clone->escalateDriver = $driver;
+        $clone->escalateThreshold = $whenConfidenceBelow;
+        return $clone;
+    }
+
+    /** Cache results by file hash + driver + options. */
+    public function cache(int|\DateTimeInterface|\DateInterval $ttl = 3600): self
+    {
+        $clone = clone $this;
+        $clone->cacheTtl = $ttl;
+        return $clone;
+    }
+
+    /**
+     * Extract structured data from a document using schema extraction.
+     * Usage: SmartOCR::driver('tesseract')->from($file)->extract(Invoice::class)
+     */
+    public function extract(string|array $target, array $options = []): \LaravelSmartOCR\Extraction\ExtractionResult
+    {
+        if ($this->pendingDocument === null) {
+            throw new \LogicException('Call ->from($file) before ->extract(), or use ->read($file) to get an OcrResult and call ExtractionService directly.');
+        }
+        $ocrResult = $this->read($this->pendingDocument);
+        return (new \LaravelSmartOCR\Extraction\ExtractionService())->extract($ocrResult, $target, $options);
+    }
+
     public function read(mixed $document): OcrResult
+    {
+        $router = new OcrRouter();
+
+        // Routing mode: pick best/cheapest driver
+        if ($this->routingMode !== null) {
+            $available = array_keys(array_filter(
+                config('smart-ocr.drivers', []),
+                fn($cfg) => !empty($cfg['api_key'] ?? $cfg['key'] ?? $cfg['binary'] ?? true)
+            ));
+            $ordered = $this->routingMode === 'cheapest'
+                ? $router->cheapestOrder($available)
+                : $router->bestOrder($available);
+            $driverName = $ordered[0] ?? $this->driverName;
+            if ($driverName !== $this->driverName) {
+                $builder = $this->manager->driver($driverName);
+                $builder->cacheTtl = $this->cacheTtl;
+                $builder->escalateDriver = $this->escalateDriver;
+                $builder->escalateThreshold = $this->escalateThreshold;
+                return $builder->read($document);
+            }
+        }
+
+        // Cache check
+        $cacheKey = null;
+        if ($this->cacheTtl !== null) {
+            $fileContent = is_string($document) && file_exists($document) ? file_get_contents($document) : '';
+            $cacheKey = hash('sha256', ($fileContent ?: '') . $this->driverName . serialize($this->options));
+            $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
+            if ($cached !== null) {
+                return OcrResult::fromArray($cached);
+            }
+        }
+
+        $result = $this->runDriver($document);
+
+        // Escalation
+        if ($this->escalateDriver !== null) {
+            $conf = $result->confidence();
+            if ($conf === null || $conf < $this->escalateThreshold) {
+                $attempts = [
+                    ['driver' => $this->driverName, 'confidence' => $conf],
+                ];
+                try {
+                    $escalatedResult = $this->manager->driver($this->escalateDriver)->read($document);
+                    $attempts[] = ['driver' => $this->escalateDriver, 'confidence' => $escalatedResult->confidence()];
+                    $data = $escalatedResult->toArray();
+                    $data['metadata'] = array_merge($data['metadata'] ?? [], ['attempts' => $attempts]);
+                    $result = OcrResult::fromArray($data);
+                } catch (\Throwable) {
+                    // Escalation failed — keep original result
+                }
+            }
+        }
+
+        // Cache store
+        if ($this->cacheTtl !== null && $cacheKey !== null) {
+            \Illuminate\Support\Facades\Cache::put($cacheKey, $result->toArray(), $this->cacheTtl);
+        }
+
+        return $result;
+    }
+
+    private function runDriver(mixed $document): OcrResult
     {
         try {
             if ($this->driver instanceof CloudOcrCapable) {
@@ -101,11 +224,6 @@ class OcrDriverBuilder
         }
 
         return $finalResult;
-    }
-
-    public function extract(mixed $document, array $options = []): array
-    {
-        return $this->driver->extract($document, array_merge($this->options, $options));
     }
 
     public function extractText(mixed $document, array $options = []): array

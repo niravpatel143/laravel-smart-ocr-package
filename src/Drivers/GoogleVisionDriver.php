@@ -293,7 +293,7 @@ class GoogleVisionDriver implements OCRDriver, CloudOcrCapable
     private function apiPost(string $endpoint, array $payload): array
     {
         $token = $this->getAuthToken();
-        $url   = self::API_BASE . $endpoint . '?key=' . urlencode($this->apiKey);
+        $url   = self::API_BASE . $endpoint;
 
         $ch = curl_init($url);
         curl_setopt_array($ch, [
@@ -304,6 +304,7 @@ class GoogleVisionDriver implements OCRDriver, CloudOcrCapable
             CURLOPT_SSL_VERIFYPEER => $this->verifySsl,
             CURLOPT_HTTPHEADER     => array_values(array_filter([
                 'Content-Type: application/json',
+                $this->apiKey ? "x-goog-api-key: {$this->apiKey}" : null,
                 $token ? "Authorization: Bearer {$token}" : null,
             ])),
         ]);

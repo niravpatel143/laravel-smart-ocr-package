@@ -1,20 +1,17 @@
 * text=auto
 
-# Files excluded from composer install (export-ignore)
-# These exist in the git repo but are NOT downloaded when someone runs
-# `composer require laravelsmartocr/laravel-smart-ocr`
-
-*.mp4                   export-ignore
-*.mov                   export-ignore
-*.avi                   export-ignore
-*.mkv                   export-ignore
-
-/tests/                 export-ignore
-/.github/               export-ignore
-/phpunit.xml            export-ignore
-/package-evaluation.md  export-ignore
-/whatspackage.md        export-ignore
+# Exclude from Composer dist archive
+*.mp4                           export-ignore
+*.mov                           export-ignore
+/tests/                         export-ignore
+/.github/                       export-ignore
+/phpunit.xml                    export-ignore
+/package-evaluation.md          export-ignore
+/whatspackage.md                export-ignore
 /advanced-invoice-extractor.php export-ignore
 /package-accuracy-test.php      export-ignore
-/temp/                  export-ignore
-/.gitattributes         export-ignore
+/temp/                          export-ignore
+/.gitattributes                 export-ignore
+/.gitignore                     export-ignore
+/AUDIT.md                       export-ignore
+/.phpunit.result.cache          export-ignore

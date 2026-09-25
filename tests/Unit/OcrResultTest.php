@@ -67,7 +67,7 @@ class OcrResultTest extends TestCase
         $result = OcrResult::fromArray(['text' => 'Test', 'provider' => 'aws', 'confidence' => 0.95]);
         $arr    = $result->toArray();
 
-        $expected = ['success', 'provider', 'text', 'confidence', 'pages', 'lines', 'words', 'blocks', 'tables', 'fields', 'metadata', 'raw', 'errors'];
+        $expected = ['success', 'provider', 'text', 'confidence', 'pages', 'lines', 'words', 'blocks', 'tables', 'fields', 'metadata', 'raw', 'errors', 'schema_version'];
         foreach ($expected as $key) {
             $this->assertArrayHasKey($key, $arr);
         }

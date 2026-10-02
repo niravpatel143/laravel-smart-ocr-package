@@ -28,6 +28,14 @@ Supports **Tesseract** (free, offline), **Google Cloud Vision**, **AWS Textract*
 
 ---
 
+## Demo
+
+> **Full feature walkthrough** — Simple Text extraction, Batch processing, Multi-language OCR, Document Detection, AI Cleanup, Templates, Workflows, and URL Security.
+
+https://github.com/user-attachments/assets/cf248862-b7cb-4504-8969-4e3745fd0e7c
+
+---
+
 ## What You Can Do
 
 ### Schema Extraction — OCR directly into typed PHP classes

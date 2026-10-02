@@ -1,4 +1,4 @@
-# Laravel Smart OCR — Multi-Provider OCR Platform
+# Laravel Smart OCR — Multi-Provider OCR for Laravel
 
 [![Latest Stable Version](https://img.shields.io/packagist/v/laravelsmartocr/laravel-smart-ocr.svg)](https://packagist.org/packages/laravelsmartocr/laravel-smart-ocr)
 [![Total Downloads](https://img.shields.io/packagist/dt/laravelsmartocr/laravel-smart-ocr.svg)](https://packagist.org/packages/laravelsmartocr/laravel-smart-ocr)
@@ -7,17 +7,87 @@
 [![Laravel](https://img.shields.io/badge/Laravel-9%2F10%2F11%2F12%2F13-red)](https://laravel.com/)
 [![Version](https://img.shields.io/badge/version-3.0.0-brightgreen)](https://github.com/laravelsmartocr/laravel-smart-ocr/releases)
 
-**One API. Nine drivers. One normalized result.** Extract text, tables, bounding boxes, and form fields from images, scanned PDFs, invoices, and contracts — using **Tesseract**, **Google Cloud Vision**, **AWS Textract**, **Azure AI Vision**, **Claude Vision**, **OpenAI GPT-4o**, **Mistral OCR**, **OpenAI-compatible** (Ollama/LM Studio), or native **PDF text extraction** — all behind a single `SmartOCR::` interface.
+> **The #1 OCR package for Laravel.** Extract text, tables, bounding boxes, and form fields from images, scanned PDFs, invoices, receipts, and contracts — using **9 providers** behind a single unified API.
 
-> **Note:** The `pdf` driver is a text-extraction engine, not an OCR engine. It reads text already embedded in a digital PDF file. For scanned or image-based PDFs, use Tesseract, Google, AWS, or Azure instead.
+**One API. Nine drivers. One normalized result.**
+
+```bash
+composer require laravelsmartocr/laravel-smart-ocr
+```
+
+```php
+// Works free, offline, zero config — start in 60 seconds
+$result = SmartOCR::driver('tesseract')->read('/path/to/invoice.jpg');
+echo $result->text();
+
+// Switch providers with a single .env change — zero code changes
+SMART_OCR_DRIVER=google   # or aws, azure, claude, openai, mistral, pdf
+```
+
+Supports **Tesseract** (free, offline), **Google Cloud Vision**, **AWS Textract**, **Azure AI Vision**, **Claude Vision**, **OpenAI GPT-4o**, **Mistral OCR**, **OpenAI-compatible** (Ollama/LM Studio), and native **PDF text extraction**.
 
 ---
 
-## Demo
+## What You Can Do
 
-> **Full feature walkthrough** — Simple Text extraction, Batch processing, Multi-language OCR, Document Detection, AI Cleanup, Templates, Workflows, and URL Security.
+### Schema Extraction — OCR directly into typed PHP classes
 
-https://github.com/user-attachments/assets/cf248862-b7cb-4504-8969-4e3745fd0e7c
+![Schema Extraction](.github/assets/schema-extraction.gif)
+
+```php
+final class Invoice {
+    public function __construct(
+        #[Field('Invoice number')] public string $number = '',
+        #[Field('Grand total, number only')] public float $total = 0.0,
+        #[Field('Due date, ISO format')] public ?string $dueDate = null,
+    ) {}
+}
+
+$result = SmartOCR::from($file)->extract(Invoice::class);
+echo $result->data->number;  // "INV-2026-001"
+echo $result->data->total;   // 1250.0
+```
+
+### Markdown & RAG Chunks — Feed OCR output to AI / vector stores
+
+![Markdown and RAG Chunks](.github/assets/markdown-rag-chunks.gif)
+
+```php
+$result = SmartOCR::from($file)->read();
+
+echo $result->toMarkdown();   // tables and headings preserved
+
+foreach ($result->chunks(maxTokens: 500) as $chunk) {
+    echo $chunk->text;        // chunk text
+    echo $chunk->heading;     // section heading
+    echo $chunk->startPage;   // page number
+}
+```
+
+### PII Redaction — Strip sensitive data before storing or sharing
+
+![PII Redaction](.github/assets/pii-redaction.gif)
+
+```php
+$result = SmartOCR::from($file)->read();
+
+// Redact emails, phone numbers, card numbers, IBAN, SSN, PAN
+$clean = $result->redact(['email', 'phone', 'card', 'iban', 'ssn'])->text();
+```
+
+### Document Classification — Auto-detect document type
+
+![Document Classification](.github/assets/document-classification.gif)
+
+```php
+$result = SmartOCR::driver('pdf')->read($file);
+
+$type = $result->classify();
+// ['type' => 'invoice', 'confidence' => 0.92]
+
+// Restrict to known types
+$type = $result->classify(['invoice', 'receipt', 'contract']);
+```
 
 ---
 
@@ -872,6 +942,12 @@ php artisan smart-ocr:doctor
 ```
 
 Reports: Tesseract binary and version, installed language packs, Ghostscript, and cloud driver credential status.
+
+---
+
+## Keywords
+
+Laravel OCR, PHP OCR package, Laravel text extraction, invoice OCR Laravel, PDF text extraction Laravel, AWS Textract Laravel, Google Cloud Vision Laravel, Azure OCR Laravel, Tesseract Laravel, OpenAI vision Laravel, Claude vision Laravel, Mistral OCR Laravel, Laravel document processing, extract text from image Laravel, OCR package Composer, Laravel invoice parsing, form field extraction Laravel, table extraction Laravel, PII redaction Laravel, document classification Laravel, RAG chunks Laravel, Laravel AI document processing, multi-provider OCR PHP, offline OCR Laravel, Laravel 11 OCR, Laravel 12 OCR
 
 ---
 

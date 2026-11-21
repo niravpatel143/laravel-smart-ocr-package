@@ -958,7 +958,17 @@ Reports: Tesseract binary and version, installed language packs, Ghostscript, an
 Laravel OCR, PHP OCR package, Laravel text extraction, invoice OCR Laravel, PDF text extraction Laravel, AWS Textract Laravel, Google Cloud Vision Laravel, Azure OCR Laravel, Tesseract Laravel, OpenAI vision Laravel, Claude vision Laravel, Mistral OCR Laravel, Laravel document processing, extract text from image Laravel, OCR package Composer, Laravel invoice parsing, form field extraction Laravel, table extraction Laravel, PII redaction Laravel, document classification Laravel, RAG chunks Laravel, Laravel AI document processing, multi-provider OCR PHP, offline OCR Laravel, Laravel 11 OCR, Laravel 12 OCR
 
 ---
+## ☕ Support This Project
 
+If Laravel Smart OCR helps you in your projects, saves development time, or makes your workflow easier, consider supporting its development.
+
+Your support motivates me to maintain the package, fix bugs, improve existing features, and build more useful tools for the Laravel community.
+
+Every coffee makes a difference. Thank you for your support! ❤️
+
+<a href="https://buymeacoffee.com/goriyanira5" target="_blank">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50">
+</a>
 ## License
 
 MIT — see [LICENSE](LICENSE)
